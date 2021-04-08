@@ -3,26 +3,36 @@
 
 #include <stdio.h>
 
-EV_CONSTRUCTOR {
+EV_CONSTRUCTOR 
+{
   printf("Loaded template module\n");
 }
 
-U32 update(F32 deltaTime)
+U32 
+update(
+    F32 deltaTime)
 {
   EV_UNUSED_PARAM(deltaTime);
   return 0;
 }
 
-EV_DESTRUCTOR {
+EV_DESTRUCTOR 
+{
   printf("Unloaded template module\n");
 }
 
-EVMODAPI bool export_and(bool x, bool y)
+EVMODAPI bool 
+export_and(
+    bool x, 
+    bool y)
 {
   return x & y;
 }
 
-EVMODAPI bool export_or(bool x, bool y)
+EVMODAPI bool 
+export_or(
+    bool x, 
+    bool y)
 {
   return x | y;
 }
