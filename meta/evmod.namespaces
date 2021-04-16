@@ -1,5 +1,15 @@
-EV_NS_DEF_BEGIN(Namespace1)
+EV_NS_DEF_BEGIN(Script)
 
-EV_NS_DEF_FN(U32, update, (F32, deltaTime))
+EV_NS_DEF_FN(ScriptHandle, new, (CONST_STR, id_str), (CONST_STR, scriptString))
+EV_NS_DEF_FN(void, addToEntity, (U64, entt), (ScriptHandle, handle))
+EV_NS_DEF_FN(void, initECS, (,))
 
-EV_NS_DEF_END(Namespace1)
+EV_NS_DEF_END(Script)
+
+EV_NS_DEF_BEGIN(ScriptInterface)
+
+EV_NS_DEF_FN(ScriptType, addType, (CONST_STR, typename), (U32, size))
+EV_NS_DEF_FN(ScriptType, getType, (CONST_STR, typename))
+EV_NS_DEF_FN(void, addFunction, (FN_PTR, func), (CONST_STR, func_name), (ScriptType, rettype), (U32, arg_count), (ScriptType *, args))
+
+EV_NS_DEF_END(ScriptInterface)

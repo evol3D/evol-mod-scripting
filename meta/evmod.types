@@ -1,2 +1,3 @@
-TYPE(TypeA, { I32 member1, F32 member2; })
-TYPE(TypeB, { PTR memberX, STR memberY; })
+TYPE(ScriptHandle, PTR)
+
+TYPE(ScriptType, U64)

@@ -1,4 +1,4 @@
-project('template', 'c',
+project('evol-mod-script', 'c',
 version : '0.1',
 default_options : ['warning_level=3', 'c_std=c11'])
 
@@ -7,20 +7,26 @@ dst = meson.current_source_dir() + '/import/'
 run_command( 'python', meson.source_root() + '/subprojects/evol/buildscripts/copy.py', src, dst)
 subdir('import')
 
+# Provided by evol
+luajit_dep = dependency('luajit')
+
 mod_src = [
-  'src/template.c',
+  'src/mod.c',
 ]
 
 mod_incdir = [
   '..',
+  'include',
 ]
 
 mod_deps = [
   evmod_deps,
+
+  luajit_dep,
 ]
 
 module = shared_module(
-  'template', mod_src,
+  'evmodscript', mod_src,
   include_directories: mod_incdir,
   dependencies: mod_deps,
 )
@@ -29,4 +35,4 @@ mod_dep = declare_dependency(
   include_directories: mod_incdir,
 )
 
-meson.override_dependency('evmod_template', mod_dep)
+meson.override_dependency('evmod_script', mod_dep)
