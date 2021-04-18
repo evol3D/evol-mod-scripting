@@ -11,5 +11,7 @@ EV_NS_DEF_BEGIN(ScriptInterface)
 EV_NS_DEF_FN(ScriptType, addType, (CONST_STR, typename), (U32, size))
 EV_NS_DEF_FN(ScriptType, getType, (CONST_STR, typename))
 EV_NS_DEF_FN(void, addFunction, (FN_PTR, func), (CONST_STR, func_name), (ScriptType, rettype), (U32, arg_count), (ScriptType *, args))
+EV_NS_DEF_FN(ScriptType, addStruct, (CONST_STR, typename), (U32, size), (U32, member_count), (ScriptStructMember *, members))
+EV_NS_DEF_FN(void, loadAPI, (CONST_STR, file_path))
 
 EV_NS_DEF_END(ScriptInterface)

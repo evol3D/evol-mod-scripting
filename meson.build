@@ -36,3 +36,5 @@ mod_dep = declare_dependency(
 )
 
 meson.override_dependency('evmod_script', mod_dep)
+
+configure_file(input: 'src/evol_api.lua', output: 'evol_api.lua', copy:true)

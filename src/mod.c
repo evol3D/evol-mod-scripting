@@ -14,7 +14,7 @@
 #include <evol/meta/type_import.h>
 #include <evol/meta/namespace_import.h>
 
-#define OBJECT_SELFREF "object"
+#define OBJECT_SELFREF "this"
 
 #define TAG_NAME(x) EV_STRINGIZE(EV_CONCAT(ScriptCB,x))
 #define SCRIPT_TAG(x) EV_CONCAT(SCRIPT_TAG_,x)
@@ -141,44 +141,21 @@ _ev_script_addtoentity(
   SCRIPT_CALLBACK_FUNCTIONS()
 #undef SCRIPT_OP
 
-  // Get `Entities`
-  lua_getglobal(Data.L, "Entities");
-  if(!lua_istable(Data.L, -1)) {
-    luaL_error(Data.L, "Entities global in the scripting lua state is not a table?");
-  }
-
-  // Get `Entities[entt]`
+  lua_getglobal(Data.L, "Entity");
+  lua_getfield(Data.L, -1, "new");
+  lua_getglobal(Data.L, "Entity");
   lua_pushinteger(Data.L, entt);
-  lua_gettable(Data.L, -2);
-
-  // If Entities[entt] == nil
-  //   Entities[entt] = {}
-  if(!lua_istable(Data.L, -1)) {
+  if(lua_pcall(Data.L, 2, 1, 0)) {
+    ev_log_error("%s", lua_tostring(Data.L, -1));
     lua_pop(Data.L, 1);
-    lua_pushinteger(Data.L, entt);
-    lua_newtable(Data.L);
-    lua_settable(Data.L, -3);
-    lua_pushinteger(Data.L, entt);
-    lua_gettable(Data.L, -2);
-  }
-
-  // Now we are sure to have Entities[entt] on top of the stack
-  // and that it's a table
-
-  { // Adding extra stuff to Entities[entt] before renaming it
-
-    // Adding object.id = entt (entity ID)
-    lua_pushinteger(Data.L, entt); // Val
-    lua_setfield(Data.L, -2, "id");
   }
 
   lua_setglobal(Data.L, OBJECT_SELFREF);
-
+  lua_pop(Data.L, 1);
 
   ScriptComponent * cmp = (ScriptComponent *)handle;
   ev_lua_runstring(Data.L, cmp->script);
 
-  lua_pop(Data.L, 1);
 }
 
 ScriptHandle 
@@ -190,11 +167,11 @@ _ev_script_new(
   cmp->script = sdsnew(scriptString);
 
   lua_newtable(Data.L);
-  lua_setglobal(Data.L, "object");
+  lua_setglobal(Data.L, OBJECT_SELFREF);
 
   ev_lua_runstring(Data.L, scriptString);
 
-  lua_getglobal(Data.L, "object");
+  lua_getglobal(Data.L, OBJECT_SELFREF);
   DEBUG_ASSERT(lua_istable(Data.L, -1));
 
   cmp->cbFlags = 0;
@@ -249,14 +226,22 @@ scriptentry_compare(
   return sdscmp(entry1->id_str, entry2->id_str);
 }
 
+void
+_ev_scriptinterface_loadapi(
+    CONST_STR file_path)
+{
+  ev_lua_runfile(Data.L, file_path);
+}
+
+
+
 EV_CONSTRUCTOR
 {
   Data.ecs_mod = NULL;
   Data.L = ev_lua_newState(true);
   Data.scripts = hashmap_new(sizeof(ScriptEntry), 16, 0, 0, scriptentry_hash, scriptentry_compare, NULL);
 
-  lua_newtable(Data.L);
-  lua_setglobal(Data.L, "Entities");
+  _ev_scriptinterface_loadapi("subprojects/evmod_script/evol_api.lua");
 
   return 0;
 }
@@ -283,7 +268,7 @@ clear_script_entries()
 EV_DESTRUCTOR 
 {
   ev_lua_destroyState(&Data.L);
-  if(Data.ecs_mod) {
+  if(Data.ecs_mod != NULL) {
     evol_unloadmodule(Data.ecs_mod);
   }
   clear_script_entries();
@@ -322,6 +307,23 @@ _ev_scriptinterface_gettype(
   return luaA_type_find(Data.L, typename);
 }
 
+ScriptType
+_ev_scriptinterface_addstruct(
+    CONST_STR typename,
+    U32 size,
+    U32 member_count,
+    ScriptStructMember *members)
+{
+  ScriptType sType = luaA_type_add(Data.L, typename, size);
+  luaA_struct_type(Data.L, sType);
+
+  for(U32 i = 0; i < member_count; ++i) {
+    luaA_struct_member_type(Data.L, sType, members[i].name, members[i].type, members[i].offset);
+  }
+
+  return sType;
+}
+
 #include <misc/func_wrappers.h>
 
 void
@@ -332,7 +334,6 @@ _ev_scriptinterface_addfunction(
     U32 arg_count,
     ScriptType *args)
 {
-  ev_log_debug("_ev_scriptinterface_addfunction called for `%s`", func_name);
   static ScriptType voidType = 0;
   if(voidType == 0) {
     voidType = _ev_scriptinterface_gettype("void");
@@ -357,4 +358,7 @@ EV_BINDINGS
   EV_NS_BIND_FN(ScriptInterface, addFunction, _ev_scriptinterface_addfunction);
   EV_NS_BIND_FN(ScriptInterface, addType, _ev_scriptinterface_addtype);
   EV_NS_BIND_FN(ScriptInterface, getType, _ev_scriptinterface_gettype);
+  EV_NS_BIND_FN(ScriptInterface, addStruct, _ev_scriptinterface_addstruct);
+
+  EV_NS_BIND_FN(ScriptInterface, loadAPI, _ev_scriptinterface_loadapi);
 }

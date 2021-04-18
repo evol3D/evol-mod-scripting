@@ -1,3 +1,10 @@
 TYPE(ScriptHandle, PTR)
 
 TYPE(ScriptType, U64)
+
+TYPE(ScriptStructMember, struct{
+  CONST_STR name;
+  ScriptType type;
+  U32 offset;
+})
+
