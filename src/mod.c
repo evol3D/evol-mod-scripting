@@ -50,11 +50,11 @@ struct {
 } Data;
 
 typedef struct {
-  SDS script;
+  evstring script;
   ScriptCallbackFlags cbFlags;
 } ScriptComponent;
 typedef struct {
-  SDS id_str;
+  evstring id_str;
   ScriptHandle component;
 } ScriptEntry;
 
@@ -164,7 +164,7 @@ _ev_script_new(
     CONST_STR scriptString)
 {
   ScriptComponent *cmp = malloc(sizeof(ScriptComponent)); 
-  cmp->script = sdsnew(scriptString);
+  cmp->script = evstring_new(scriptString);
 
   lua_newtable(Data.L);
   lua_setglobal(Data.L, OBJECT_SELFREF);
@@ -196,7 +196,7 @@ _ev_script_new(
 
   ScriptHandle handle = (ScriptHandle)cmp;
   ScriptEntry entry = {
-    .id_str = sdsnew(id),
+    .id_str = evstring_new(id),
     .component = handle,
   };
   hashmap_set(Data.scripts, &entry);
@@ -210,7 +210,7 @@ scriptentry_hash(
     U64 seed1)
 {
   const ScriptEntry *entry = data;
-  return hashmap_murmur(entry->id_str, sdslen(entry->id_str), seed0, seed1);
+  return hashmap_murmur(entry->id_str, evstring_len(entry->id_str), seed0, seed1);
 }
 
 I32 
@@ -223,7 +223,7 @@ scriptentry_compare(
   const ScriptEntry *entry1 = data1;
   const ScriptEntry *entry2 = data2;
 
-  return sdscmp(entry1->id_str, entry2->id_str);
+  return evstring_cmp(entry1->id_str, entry2->id_str);
 }
 
 void
@@ -253,8 +253,8 @@ script_delete(
 {
   EV_UNUSED_PARAM(_udata);
   ScriptEntry *entry = data;
-  sdsfree(entry->id_str);
-  sdsfree(((ScriptComponent*)entry->component)->script);
+  evstring_free(entry->id_str);
+  evstring_free(((ScriptComponent*)entry->component)->script);
   free(entry->component);
   return true;
 }
