@@ -24,21 +24,19 @@
   SCRIPT_OP(on_init)        \
   SCRIPT_OP(on_update)      \
   SCRIPT_OP(on_fixedupdate) \
-  SCRIPT_OP(on_deinit)
 
-#define SCRIPT_OP(x) SCRIPT_TAG(x),
 typedef enum {
+#define SCRIPT_OP(x) SCRIPT_TAG(x),
   SCRIPT_CALLBACK_FUNCTIONS()
-
+#undef SCRIPT_OP
   SCRIPT_TAG(COUNT)
 } ScriptCallbackTags;
-#undef SCRIPT_OP
 
-#define SCRIPT_OP(x) EV_SCRIPT_CALLBACK(x) = 1 << SCRIPT_TAG(x),
 typedef enum {
+#define SCRIPT_OP(x) EV_SCRIPT_CALLBACK(x) = 1 << SCRIPT_TAG(x),
   SCRIPT_CALLBACK_FUNCTIONS()
-} ScriptCallbackFlagBits;
 #undef SCRIPT_OP
+} ScriptCallbackFlagBits;
 typedef ScriptCallbackFlagBits ScriptCallbackFlags;
 
 struct {
