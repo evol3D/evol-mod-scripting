@@ -89,6 +89,8 @@ ScriptCallbackOnUpdateSystem(
     // Popping `Entities[entt]`
     lua_pop(Data.L, 1);
   }
+  // Popping `Entities`
+  lua_pop(Data.L, 1);
 }
 
 void 
@@ -122,6 +124,8 @@ ScriptCallbackOnFixedUpdateSystem(
     // Popping `Entities[entt]`
     lua_pop(Data.L, 1);
   }
+  // Popping `Entities`
+  lua_pop(Data.L, 1);
 }
 
 void
