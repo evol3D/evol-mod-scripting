@@ -14,6 +14,12 @@
 #include <evol/meta/type_import.h>
 #include <evol/meta/namespace_import.h>
 
+struct EntitiesList {
+  vec(ECSEntityID) entities;
+};
+typedef struct EntitiesList FrameCollisionEnterListComponent;
+typedef struct EntitiesList FrameCollisionLeaveListComponent;
+
 #define OBJECT_SELFREF "this"
 
 #define TAG_NAME(x) EV_STRINGIZE(EV_CONCAT(ScriptCB,x))
@@ -21,9 +27,11 @@
 #define EV_SCRIPT_CALLBACK(x) EV_CONCAT(EV_SCRIPT_CALLBACK_,x)
 
 #define SCRIPT_CALLBACK_FUNCTIONS() \
-  SCRIPT_OP(on_init)        \
-  SCRIPT_OP(on_update)      \
-  SCRIPT_OP(on_fixedupdate) \
+  SCRIPT_OP(on_init)           \
+  SCRIPT_OP(on_update)         \
+  SCRIPT_OP(on_fixedupdate)    \
+  SCRIPT_OP(on_collisionenter) \
+  SCRIPT_OP(on_collisionleave)
 
 typedef enum {
 #define SCRIPT_OP(x) SCRIPT_TAG(x),
@@ -44,6 +52,10 @@ struct {
   evolmodule_t ecs_mod;
   ECSEntityID scriptComponentID;
   ECSEntityID scriptTagIDs[SCRIPT_TAG(COUNT)];
+
+  ECSComponentID frameCollisionEnterListComponentID;
+  ECSComponentID frameCollisionLeaveListComponentID;
+
   struct hashmap *scripts;
 } Data;
 
@@ -129,6 +141,105 @@ ScriptCallbackOnFixedUpdateSystem(
 }
 
 void
+ScriptCallbackOnCollisionEnterSystem(
+    ECSQuery query)
+{
+  ScriptComponent *scriptComponents = ECS->getQueryColumn(query, sizeof(ScriptComponent), 1);
+  struct EntitiesList *collisionEnterEntities = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 2);
+  ECSEntityID *enttIDs = ECS->getQueryEntities(query);
+
+  U32 count = ECS->getQueryMatchCount(query);
+  ScriptComponent cmp;
+  lua_getglobal(Data.L, "Entities");
+
+  for(U32 i = 0; i < count; ++i) {
+    cmp = scriptComponents[i];
+    ECSEntityID entt = enttIDs[i];
+    vec(ECSEntityID) collEntts = collisionEnterEntities[i].entities;
+
+    lua_pushinteger(Data.L, entt);
+    lua_gettable(Data.L, -2); // Entities[entt]
+
+    // TODO find a cleaner way that setting then getting
+    lua_setglobal(Data.L, OBJECT_SELFREF); // this = Entities[entt]
+    lua_getglobal(Data.L, OBJECT_SELFREF);
+
+    for(U32 j = 0; j < vec_len(collEntts); j++) {
+      /* ev_log_trace("Collision enter (%llu, %llu)", entt, collEntts[j]); */
+
+      lua_pushstring(Data.L, "on_collisionenter");
+      lua_gettable(Data.L, -2); // this.on_collisionenter
+
+      lua_pushinteger(Data.L, collEntts[j]);
+      lua_gettable(Data.L, -4); // Entities[collEntts[j]]
+
+      // REMOVE
+      if(lua_isnil(Data.L, -1)) {
+        assert(false);
+      }
+
+      if(lua_pcall(Data.L, 1, 0, 0)) {
+        ev_log_error("%s", lua_tostring(Data.L, -1));
+        lua_pop(Data.L, 1);
+      }
+    }
+    vec_clear(collEntts);
+
+    // Popping `Entities[entt]`
+    lua_pop(Data.L, 1);
+  }
+  // Popping `Entities`
+  lua_pop(Data.L, 1);
+}
+
+void
+ScriptCallbackOnCollisionLeaveSystem(
+    ECSQuery query)
+{  
+  ScriptComponent *scriptComponents = ECS->getQueryColumn(query, sizeof(ScriptComponent), 1);
+  struct EntitiesList *collisionLeaveEntities = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 2);
+  ECSEntityID *enttIDs = ECS->getQueryEntities(query);
+
+  U32 count = ECS->getQueryMatchCount(query);
+  ScriptComponent cmp;
+  lua_getglobal(Data.L, "Entities");
+
+  for(U32 i = 0; i < count; ++i) {
+    cmp = scriptComponents[i];
+    ECSEntityID entt = enttIDs[i];
+    vec(ECSEntityID) collEntts = collisionLeaveEntities[i].entities;
+
+    lua_pushinteger(Data.L, entt);
+    lua_gettable(Data.L, -2); // Entities[entt]
+
+    // TODO find a cleaner way that setting then getting
+    lua_setglobal(Data.L, OBJECT_SELFREF); // this = Entities[entt]
+    lua_getglobal(Data.L, OBJECT_SELFREF);
+
+    for(U32 j = 0; j < vec_len(collEntts); j++) {
+      /* ev_log_trace("Collision enter (%llu, %llu)", entt, collEntts[j]); */
+
+      lua_pushstring(Data.L, "on_collisionleave");
+      lua_gettable(Data.L, -2); // this.on_collisionenter
+
+      lua_pushinteger(Data.L, collEntts[j]);
+      lua_gettable(Data.L, -4); // Entities[collEntts[j]]
+
+      if(lua_pcall(Data.L, 1, 0, 0)) {
+        ev_log_error("%s", lua_tostring(Data.L, -1));
+        lua_pop(Data.L, 1);
+      }
+    }
+    vec_clear(collEntts);
+
+    // Popping `Entities[entt]`
+    lua_pop(Data.L, 1);
+  }
+  // Popping `Entities`
+  lua_pop(Data.L, 1);
+}
+
+void
 _ev_script_addtoentity(
     ECSEntityID entt, 
     ScriptHandle handle)
@@ -142,6 +253,13 @@ _ev_script_addtoentity(
   }
   SCRIPT_CALLBACK_FUNCTIONS()
 #undef SCRIPT_OP
+
+  if(p_cmp->cbFlags & EV_SCRIPT_CALLBACK(on_collisionenter)) {
+    ECS->addComponent(entt, Data.frameCollisionEnterListComponentID);
+  }
+  if(p_cmp->cbFlags & EV_SCRIPT_CALLBACK(on_collisionleave)) {
+    ECS->addComponent(entt, Data.frameCollisionLeaveListComponentID);
+  }
 
   lua_getglobal(Data.L, "Entity");
   lua_getfield(Data.L, -1, "new");
@@ -291,11 +409,61 @@ EV_DESTRUCTOR
 }
 
 void
+onAddEntitiesList(
+    ECSQuery query)
+{
+  struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
+  list->entities = vec_init(ECSEntityID);
+  ev_log_trace("vec_init for entities list. Entity: %llu", *ECS->getQueryEntities(query));
+}
+
+void
+onRemoveEntitiesList(
+    ECSQuery query)
+{
+  struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
+  vec_fini(list->entities);
+  ev_log_trace("vec_fini for entities list. Entity: %llu", *ECS->getQueryEntities(query));
+}
+
+vec(U64)*
+_ev_script_getcollisionenterlist(
+    U64 entt)
+{
+  if(ECS->hasComponent(entt, Data.frameCollisionEnterListComponentID)) {
+    struct EntitiesList *list = ECS->getComponent(entt, Data.frameCollisionEnterListComponentID);
+    return &(list->entities);
+  }
+  return NULL;
+}
+
+vec(U64)*
+_ev_script_getcollisionleavelist(
+    U64 entt)
+{
+  if(ECS->hasComponent(entt, Data.frameCollisionLeaveListComponentID)) {
+    struct EntitiesList *list = ECS->getComponent(entt, Data.frameCollisionLeaveListComponentID);
+    return &(list->entities);
+  }
+  return NULL;
+}
+
+
+void
 _ev_script_initecs()
 {
   Data.ecs_mod = evol_loadmodule("ecs");
   IMPORT_NAMESPACE(ECS, Data.ecs_mod);
   Data.scriptComponentID = ECS->registerComponent("ScriptComponent", sizeof(ScriptComponent), EV_ALIGNOF(ScriptComponent));
+
+  Data.frameCollisionEnterListComponentID = ECS->registerComponent("FrameCollisionEnterListComponent", sizeof(FrameCollisionEnterListComponent), EV_ALIGNOF(FrameCollisionEnterListComponent));
+  Data.frameCollisionLeaveListComponentID = ECS->registerComponent("FrameCollisionLeaveListComponent", sizeof(FrameCollisionLeaveListComponent), EV_ALIGNOF(FrameCollisionLeaveListComponent));
+
+  ECS->setOnAddTrigger("FrameCollisionEnterListComponentOnAdd", "FrameCollisionEnterListComponent", onAddEntitiesList);
+  ECS->setOnAddTrigger("FrameCollisionLeaveListComponentOnAdd", "FrameCollisionLeaveListComponent", onAddEntitiesList);
+
+  ECS->setOnRemoveTrigger("FrameCollisionEnterListComponentOnRemove", "FrameCollisionEnterListComponent", onRemoveEntitiesList);
+  ECS->setOnRemoveTrigger("FrameCollisionLeaveListComponentOnRemove", "FrameCollisionLeaveListComponent", onRemoveEntitiesList);
 
 #define SCRIPT_OP(x) Data.scriptTagIDs[SCRIPT_TAG(x)] = ECS->registerTag(TAG_NAME(x));
   SCRIPT_CALLBACK_FUNCTIONS()
@@ -304,6 +472,9 @@ _ev_script_initecs()
   ECS->registerSystem("ScriptComponent,"TAG_NAME(on_update), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnUpdateSystem, "ScriptCallbackOnUpdateSystem");
   ECSSystemID fixedUpdateSystem = ECS->registerSystem("ScriptComponent,"TAG_NAME(on_fixedupdate), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnFixedUpdateSystem, "ScriptCallbackOnFixedUpdateSystem");
   ECS->setSystemRate(fixedUpdateSystem, 60.0);
+
+  ECS->registerSystem("ScriptComponent,FrameCollisionEnterListComponent,"TAG_NAME(on_collisionenter), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnCollisionEnterSystem, "ScriptCallbackOnCollisionEnterSystem");
+  ECS->registerSystem("ScriptComponent,FrameCollisionLeaveListComponent,"TAG_NAME(on_collisionleave), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnCollisionLeaveSystem, "ScriptCallbackOnCollisionLeaveSystem");
 }
 
 ScriptType
@@ -368,6 +539,9 @@ EV_BINDINGS
   EV_NS_BIND_FN(Script, new, _ev_script_new);
   EV_NS_BIND_FN(Script, addToEntity, _ev_script_addtoentity);
   EV_NS_BIND_FN(Script, initECS, _ev_script_initecs);
+
+  EV_NS_BIND_FN(Script, getCollisionEnterList, _ev_script_getcollisionenterlist);
+  EV_NS_BIND_FN(Script, getCollisionLeaveList, _ev_script_getcollisionleavelist);
 
   EV_NS_BIND_FN(ScriptInterface, addFunction, _ev_scriptinterface_addfunction);
   EV_NS_BIND_FN(ScriptInterface, addType, _ev_scriptinterface_addtype);
