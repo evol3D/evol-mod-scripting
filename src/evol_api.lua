@@ -28,6 +28,19 @@ Vec3.__sub = function(v1, v2)
     v1.z - v2.z)
 end
 
+Vec3.add = function(self, other)
+  self.x = self.x + other.x
+  self.y = self.y + other.y
+  self.z = self.z + other.z
+end
+
+Vec3.sub = function(self, other)
+  self.x = self.x - other.x
+  self.y = self.y - other.y
+  self.z = self.z - other.z
+end
+
+
 Vec4 = {}
 function Vec4:new(nx, ny, nz, nw)
   -- creating an instance of the class
@@ -58,6 +71,20 @@ Vec4.__sub = function(v1, v2)
     v1.y - v2.y,
     v1.z - v2.z,
     v1.w - v2.w)
+end
+
+Vec4.add = function(self, other)
+  self.x = self.x + other.x
+  self.y = self.y + other.y
+  self.z = self.z + other.z
+  self.w = self.w + other.w
+end
+
+Vec4.sub = function(self, other)
+  self.x = self.x - other.x
+  self.y = self.y - other.y
+  self.z = self.z - other.z
+  self.w = self.w - other.w
 end
 
 
