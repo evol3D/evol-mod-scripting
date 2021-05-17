@@ -158,6 +158,18 @@ _ev_script_addtoentity(
   ScriptComponent * cmp = (ScriptComponent *)handle;
   ev_lua_runstring(Data.L, cmp->script);
 
+  if(p_cmp->cbFlags & EV_SCRIPT_CALLBACK(on_init)) {
+    lua_getglobal(Data.L, OBJECT_SELFREF);
+    lua_pushstring(Data.L, "on_init");
+    lua_gettable(Data.L, -2);
+
+    if(lua_pcall(Data.L, 0, 0, 0)) {
+      ev_log_error("%s", lua_tostring(Data.L, -1));
+      lua_pop(Data.L, 1);
+    }
+
+    lua_pop(Data.L, 1);
+  }
 }
 
 ScriptHandle 
