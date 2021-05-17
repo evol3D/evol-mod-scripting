@@ -95,6 +95,12 @@ end
 -- Entity Stuff
 
 Entities = {}
+setmetatable(Entities, Entities)
+
+function Entities:__index(key)
+  return rawget(self, key) or Entity:new(key)
+end
+
 Entity = {}
 ComponentGetters = {}
 EntityMemberGetters = {}
