@@ -86,9 +86,8 @@ ScriptCallbackOnUpdateSystem(
     lua_pushinteger(Data.L, entt);
     lua_gettable(Data.L, -2);
 
-    // TODO find a cleaner way that setting then getting
+    lua_pushvalue(Data.L, -1);
     lua_setglobal(Data.L, OBJECT_SELFREF);
-    lua_getglobal(Data.L, OBJECT_SELFREF);
 
     // Get `Entities[entt]["on_update"]
     lua_pushstring(Data.L, "on_update");
@@ -121,13 +120,13 @@ ScriptCallbackOnFixedUpdateSystem(
     lua_pushinteger(Data.L, entt);
     lua_gettable(Data.L, -2);
 
-    // TODO find a cleaner way that setting then getting
+    lua_pushvalue(Data.L, -1);
     lua_setglobal(Data.L, OBJECT_SELFREF);
-    lua_getglobal(Data.L, OBJECT_SELFREF);
 
     // Get `Entities[entt]["on_fixedupdate"]
     lua_pushstring(Data.L, "on_fixedupdate");
     lua_gettable(Data.L, -2);
+
     if(lua_pcall(Data.L, 0, 0, 0)) {
       ev_log_error("%s", lua_tostring(Data.L, -1));
       lua_pop(Data.L, 1);
@@ -160,13 +159,10 @@ ScriptCallbackOnCollisionEnterSystem(
     lua_pushinteger(Data.L, entt);
     lua_gettable(Data.L, -2); // Entities[entt]
 
-    // TODO find a cleaner way that setting then getting
+    lua_pushvalue(Data.L, -1);
     lua_setglobal(Data.L, OBJECT_SELFREF); // this = Entities[entt]
-    lua_getglobal(Data.L, OBJECT_SELFREF);
 
     for(U32 j = 0; j < vec_len(collEntts); j++) {
-      /* ev_log_trace("Collision enter (%llu, %llu)", entt, collEntts[j]); */
-
       lua_pushstring(Data.L, "on_collisionenter");
       lua_gettable(Data.L, -2); // this.on_collisionenter
 
@@ -212,13 +208,10 @@ ScriptCallbackOnCollisionLeaveSystem(
     lua_pushinteger(Data.L, entt);
     lua_gettable(Data.L, -2); // Entities[entt]
 
-    // TODO find a cleaner way that setting then getting
+    lua_pushvalue(Data.L, -1);
     lua_setglobal(Data.L, OBJECT_SELFREF); // this = Entities[entt]
-    lua_getglobal(Data.L, OBJECT_SELFREF);
 
     for(U32 j = 0; j < vec_len(collEntts); j++) {
-      /* ev_log_trace("Collision enter (%llu, %llu)", entt, collEntts[j]); */
-
       lua_pushstring(Data.L, "on_collisionleave");
       lua_gettable(Data.L, -2); // this.on_collisionenter
 
@@ -414,16 +407,18 @@ onAddEntitiesList(
 {
   struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
   list->entities = vec_init(ECSEntityID);
-  ev_log_trace("vec_init for entities list. Entity: %llu", *ECS->getQueryEntities(query));
 }
 
+// For some reason, this doesn't seem to get called when the ECS module is
+// destructed. I'm assuming it doesn't matter much since the destruction of
+// the module should free all of its allocated memory. However, ECS->deleteEntity
+// seems to trigger the OnRemove event.
 void
 onRemoveEntitiesList(
     ECSQuery query)
 {
   struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
   vec_fini(list->entities);
-  ev_log_trace("vec_fini for entities list. Entity: %llu", *ECS->getQueryEntities(query));
 }
 
 vec(U64)*
