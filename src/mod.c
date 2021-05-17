@@ -133,7 +133,7 @@ _ev_script_addtoentity(
     ECSEntityID entt, 
     ScriptHandle handle)
 {
-  ECS->addComponent(entt, Data.scriptComponentID, sizeof(ScriptComponent), handle);
+  ECS->setComponent(entt, Data.scriptComponentID, sizeof(ScriptComponent), handle);
   ScriptComponent *p_cmp = (ScriptComponent *)handle;
 
 #define SCRIPT_OP(x) \
