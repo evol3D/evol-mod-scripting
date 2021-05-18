@@ -4,8 +4,8 @@ EV_NS_DEF_FN(ScriptHandle, new, (CONST_STR, id_str), (CONST_STR, scriptString))
 EV_NS_DEF_FN(void, addToEntity, (U64, entt), (ScriptHandle, handle))
 EV_NS_DEF_FN(void, initECS, (,))
 
-EV_NS_DEF_FN(vec(U64) *, getCollisionEnterList, (U64, entt));
-EV_NS_DEF_FN(vec(U64) *, getCollisionLeaveList, (U64, entt));
+EV_NS_DEF_FN(vec(U64) *, getCollisionEnterList, (U64, entt))
+EV_NS_DEF_FN(vec(U64) *, getCollisionLeaveList, (U64, entt))
 
 EV_NS_DEF_END(Script)
 
