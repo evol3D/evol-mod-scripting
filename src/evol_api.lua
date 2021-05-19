@@ -28,6 +28,13 @@ Vec3.__sub = function(v1, v2)
     v1.z - v2.z)
 end
 
+Vec3.__mul = function(v, s)
+  return Vec3:new(
+    v.x * s,
+    v.y * s,
+    v.z * s)
+end
+
 Vec3.add = function(self, other)
   self.x = self.x + other.x
   self.y = self.y + other.y
