@@ -68,6 +68,26 @@ typedef struct {
 
 static_assert(sizeof(ScriptType) == sizeof(lua_Integer), "ScriptType is not the same size as lua_Integer");
 
+void
+onAddEntitiesList(
+    ECSQuery query)
+{
+  struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
+  list->entities = vec_init(ECSEntityID);
+}
+
+// For some reason, this doesn't seem to get called when the ECS module is
+// destructed. I'm assuming it doesn't matter much since the destruction of
+// the module should free all of its allocated memory. However, ECS->deleteEntity
+// seems to trigger the OnRemove event.
+void
+onRemoveEntitiesList(
+    ECSQuery query)
+{
+  struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
+  vec_fini(list->entities);
+}
+
 void 
 ScriptCallbackOnUpdateSystem(
     ECSQuery query)
@@ -361,9 +381,39 @@ _ev_scriptinterface_loadapi(
 
 EV_CONSTRUCTOR
 {
-  Data.ecs_mod = NULL;
   Data.L = ev_lua_newState(true);
   Data.scripts = hashmap_new(sizeof(ScriptEntry), 16, 0, 0, scriptentry_hash, scriptentry_compare, NULL);
+
+  Data.ecs_mod = evol_loadmodule("ecs");
+  if(Data.ecs_mod) {
+    IMPORT_NAMESPACE(ECS, Data.ecs_mod);
+    IMPORT_NAMESPACE(GameECS, Data.ecs_mod);
+
+    if(GameECS) {
+      Data.scriptComponentID = GameECS->registerComponent("ScriptComponent", sizeof(ScriptComponent), EV_ALIGNOF(ScriptComponent));
+
+      Data.frameCollisionEnterListComponentID = GameECS->registerComponent("FrameCollisionEnterListComponent", sizeof(FrameCollisionEnterListComponent), EV_ALIGNOF(FrameCollisionEnterListComponent));
+      Data.frameCollisionLeaveListComponentID = GameECS->registerComponent("FrameCollisionLeaveListComponent", sizeof(FrameCollisionLeaveListComponent), EV_ALIGNOF(FrameCollisionLeaveListComponent));
+
+      GameECS->setOnAddTrigger("FrameCollisionEnterListComponentOnAdd", "FrameCollisionEnterListComponent", onAddEntitiesList);
+      GameECS->setOnAddTrigger("FrameCollisionLeaveListComponentOnAdd", "FrameCollisionLeaveListComponent", onAddEntitiesList);
+
+      GameECS->setOnRemoveTrigger("FrameCollisionEnterListComponentOnRemove", "FrameCollisionEnterListComponent", onRemoveEntitiesList);
+      GameECS->setOnRemoveTrigger("FrameCollisionLeaveListComponentOnRemove", "FrameCollisionLeaveListComponent", onRemoveEntitiesList);
+
+#define SCRIPT_OP(x) Data.scriptTagIDs[SCRIPT_TAG(x)] = GameECS->registerTag(TAG_NAME(x));
+      SCRIPT_CALLBACK_FUNCTIONS()
+#undef SCRIPT_OP
+
+      GameECS->registerSystem("ScriptComponent,"TAG_NAME(on_update), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnUpdateSystem, "ScriptCallbackOnUpdateSystem");
+      GameSystemID fixedUpdateSystem = GameECS->registerSystem("ScriptComponent,"TAG_NAME(on_fixedupdate), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnFixedUpdateSystem, "ScriptCallbackOnFixedUpdateSystem");
+      GameECS->setSystemRate(fixedUpdateSystem, 60.0);
+
+      GameECS->registerSystem("ScriptComponent,FrameCollisionEnterListComponent,"TAG_NAME(on_collisionenter), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnCollisionEnterSystem, "ScriptCallbackOnCollisionEnterSystem");
+      GameECS->registerSystem("ScriptComponent,FrameCollisionLeaveListComponent,"TAG_NAME(on_collisionleave), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnCollisionLeaveSystem, "ScriptCallbackOnCollisionLeaveSystem");
+    }
+  }
+
 
   _ev_scriptinterface_loadapi("subprojects/evmod_script/evol_api.lua");
 
@@ -400,26 +450,6 @@ EV_DESTRUCTOR
   return 0;
 }
 
-void
-onAddEntitiesList(
-    ECSQuery query)
-{
-  struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
-  list->entities = vec_init(ECSEntityID);
-}
-
-// For some reason, this doesn't seem to get called when the ECS module is
-// destructed. I'm assuming it doesn't matter much since the destruction of
-// the module should free all of its allocated memory. However, ECS->deleteEntity
-// seems to trigger the OnRemove event.
-void
-onRemoveEntitiesList(
-    ECSQuery query)
-{
-  struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
-  vec_fini(list->entities);
-}
-
 vec(U64)*
 _ev_script_getcollisionenterlist(
     ECSGameWorldHandle world,
@@ -442,35 +472,6 @@ _ev_script_getcollisionleavelist(
     return &(list->entities);
   }
   return NULL;
-}
-
-
-void
-_ev_script_initecs()
-{
-  Data.ecs_mod = evol_loadmodule("ecs");
-  IMPORT_NAMESPACE(ECS, Data.ecs_mod);
-  Data.scriptComponentID = ECS->registerComponent("ScriptComponent", sizeof(ScriptComponent), EV_ALIGNOF(ScriptComponent));
-
-  Data.frameCollisionEnterListComponentID = ECS->registerComponent("FrameCollisionEnterListComponent", sizeof(FrameCollisionEnterListComponent), EV_ALIGNOF(FrameCollisionEnterListComponent));
-  Data.frameCollisionLeaveListComponentID = ECS->registerComponent("FrameCollisionLeaveListComponent", sizeof(FrameCollisionLeaveListComponent), EV_ALIGNOF(FrameCollisionLeaveListComponent));
-
-  ECS->setOnAddTrigger("FrameCollisionEnterListComponentOnAdd", "FrameCollisionEnterListComponent", onAddEntitiesList);
-  ECS->setOnAddTrigger("FrameCollisionLeaveListComponentOnAdd", "FrameCollisionLeaveListComponent", onAddEntitiesList);
-
-  ECS->setOnRemoveTrigger("FrameCollisionEnterListComponentOnRemove", "FrameCollisionEnterListComponent", onRemoveEntitiesList);
-  ECS->setOnRemoveTrigger("FrameCollisionLeaveListComponentOnRemove", "FrameCollisionLeaveListComponent", onRemoveEntitiesList);
-
-#define SCRIPT_OP(x) Data.scriptTagIDs[SCRIPT_TAG(x)] = ECS->registerTag(TAG_NAME(x));
-  SCRIPT_CALLBACK_FUNCTIONS()
-#undef SCRIPT_OP
-
-  ECS->registerSystem("ScriptComponent,"TAG_NAME(on_update), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnUpdateSystem, "ScriptCallbackOnUpdateSystem");
-  ECSSystemID fixedUpdateSystem = ECS->registerSystem("ScriptComponent,"TAG_NAME(on_fixedupdate), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnFixedUpdateSystem, "ScriptCallbackOnFixedUpdateSystem");
-  ECS->setSystemRate(fixedUpdateSystem, 60.0);
-
-  ECS->registerSystem("ScriptComponent,FrameCollisionEnterListComponent,"TAG_NAME(on_collisionenter), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnCollisionEnterSystem, "ScriptCallbackOnCollisionEnterSystem");
-  ECS->registerSystem("ScriptComponent,FrameCollisionLeaveListComponent,"TAG_NAME(on_collisionleave), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnCollisionLeaveSystem, "ScriptCallbackOnCollisionLeaveSystem");
 }
 
 ScriptType
@@ -534,7 +535,6 @@ EV_BINDINGS
 {
   EV_NS_BIND_FN(Script, new, _ev_script_new);
   EV_NS_BIND_FN(Script, addToEntity, _ev_script_addtoentity);
-  EV_NS_BIND_FN(Script, initECS, _ev_script_initecs);
 
   EV_NS_BIND_FN(Script, getCollisionEnterList, _ev_script_getcollisionenterlist);
   EV_NS_BIND_FN(Script, getCollisionLeaveList, _ev_script_getcollisionleavelist);
