@@ -9,13 +9,11 @@
 #include <luajit.h>
 #include <lauxlib.h>
 
-#define TYPE_MODULE evmod_ecs
-#define NAMESPACE_MODULE evmod_ecs
-#include <evol/meta/type_import.h>
-#include <evol/meta/namespace_import.h>
+#define IMPORT_MODULE evmod_ecs
+#include <evol/meta/module_import.h>
 
 struct EntitiesList {
-  vec(ECSEntityID) entities;
+  vec(GameEntityID) entities;
 };
 typedef struct EntitiesList FrameCollisionEnterListComponent;
 typedef struct EntitiesList FrameCollisionLeaveListComponent;
@@ -50,11 +48,11 @@ typedef ScriptCallbackFlagBits ScriptCallbackFlags;
 struct {
   lua_State *L;
   evolmodule_t ecs_mod;
-  ECSEntityID scriptComponentID;
-  ECSEntityID scriptTagIDs[SCRIPT_TAG(COUNT)];
+  GameComponentID scriptComponentID;
+  GameTagID scriptTagIDs[SCRIPT_TAG(COUNT)];
 
-  ECSComponentID frameCollisionEnterListComponentID;
-  ECSComponentID frameCollisionLeaveListComponentID;
+  GameComponentID frameCollisionEnterListComponentID;
+  GameComponentID frameCollisionLeaveListComponentID;
 
   struct hashmap *scripts;
 } Data;
@@ -203,7 +201,7 @@ ScriptCallbackOnCollisionLeaveSystem(
   for(U32 i = 0; i < count; ++i) {
     cmp = scriptComponents[i];
     ECSEntityID entt = enttIDs[i];
-    vec(ECSEntityID) collEntts = collisionLeaveEntities[i].entities;
+    vec(GameEntityID) collEntts = collisionLeaveEntities[i].entities;
 
     lua_pushinteger(Data.L, entt);
     lua_gettable(Data.L, -2); // Entities[entt]
@@ -234,24 +232,25 @@ ScriptCallbackOnCollisionLeaveSystem(
 
 void
 _ev_script_addtoentity(
-    ECSEntityID entt, 
+    ECSGameWorldHandle world,
+    GameEntityID entt,
     ScriptHandle handle)
 {
-  ECS->setComponent(entt, Data.scriptComponentID, sizeof(ScriptComponent), handle);
+  GameECS->setComponent(world, entt, Data.scriptComponentID, handle);
   ScriptComponent *p_cmp = (ScriptComponent *)handle;
 
 #define SCRIPT_OP(x) \
   if(p_cmp->cbFlags & EV_SCRIPT_CALLBACK(x)) { \
-    ECS->addTag(entt, Data.scriptTagIDs[SCRIPT_TAG(x)]); \
+    GameECS->addTag(world, entt, Data.scriptTagIDs[SCRIPT_TAG(x)]); \
   }
   SCRIPT_CALLBACK_FUNCTIONS()
 #undef SCRIPT_OP
 
   if(p_cmp->cbFlags & EV_SCRIPT_CALLBACK(on_collisionenter)) {
-    ECS->addComponent(entt, Data.frameCollisionEnterListComponentID);
+    GameECS->addComponent(world, entt, Data.frameCollisionEnterListComponentID);
   }
   if(p_cmp->cbFlags & EV_SCRIPT_CALLBACK(on_collisionleave)) {
-    ECS->addComponent(entt, Data.frameCollisionLeaveListComponentID);
+    GameECS->addComponent(world, entt, Data.frameCollisionLeaveListComponentID);
   }
 
   lua_getglobal(Data.L, "Entity");
@@ -423,10 +422,11 @@ onRemoveEntitiesList(
 
 vec(U64)*
 _ev_script_getcollisionenterlist(
+    ECSGameWorldHandle world,
     U64 entt)
 {
-  if(ECS->hasComponent(entt, Data.frameCollisionEnterListComponentID)) {
-    struct EntitiesList *list = ECS->getComponent(entt, Data.frameCollisionEnterListComponentID);
+  if(GameECS->hasComponent(world, entt, Data.frameCollisionEnterListComponentID)) {
+    struct EntitiesList *list = GameECS->getComponent(world, entt, Data.frameCollisionEnterListComponentID);
     return &(list->entities);
   }
   return NULL;
@@ -434,10 +434,11 @@ _ev_script_getcollisionenterlist(
 
 vec(U64)*
 _ev_script_getcollisionleavelist(
+    ECSGameWorldHandle world,
     U64 entt)
 {
-  if(ECS->hasComponent(entt, Data.frameCollisionLeaveListComponentID)) {
-    struct EntitiesList *list = ECS->getComponent(entt, Data.frameCollisionLeaveListComponentID);
+  if(GameECS->hasComponent(world, entt, Data.frameCollisionLeaveListComponentID)) {
+    struct EntitiesList *list = GameECS->getComponent(world, entt, Data.frameCollisionLeaveListComponentID);
     return &(list->entities);
   }
   return NULL;
