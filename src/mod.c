@@ -11,6 +11,8 @@
 
 #define IMPORT_MODULE evmod_ecs
 #include <evol/meta/module_import.h>
+#define IMPORT_MODULE evmod_game
+#include <evol/meta/module_import.h>
 
 struct EntitiesList {
   vec(GameEntityID) entities;
@@ -48,6 +50,7 @@ typedef ScriptCallbackFlagBits ScriptCallbackFlags;
 struct {
   lua_State *L;
   evolmodule_t ecs_mod;
+  evolmodule_t game_mod;
   GameComponentID scriptComponentID;
   GameTagID scriptTagIDs[SCRIPT_TAG(COUNT)];
 
@@ -252,10 +255,11 @@ ScriptCallbackOnCollisionLeaveSystem(
 
 void
 _ev_script_addtoentity(
-    ECSGameWorldHandle world,
+    GameScene scene,
     GameEntityID entt,
     ScriptHandle handle)
 {
+  ECSGameWorldHandle world = Scene->getECSWorld(scene);
   GameECS->setComponent(world, entt, Data.scriptComponentID, handle);
   ScriptComponent *p_cmp = (ScriptComponent *)handle;
 
@@ -384,10 +388,14 @@ EV_CONSTRUCTOR
   Data.L = ev_lua_newState(true);
   Data.scripts = hashmap_new(sizeof(ScriptEntry), 16, 0, 0, scriptentry_hash, scriptentry_compare, NULL);
 
+  Data.game_mod = evol_loadmodule("game");
+  if(Data.game_mod) {
+    imports(Data.game_mod, (Object, Scene));
+  }
+
   Data.ecs_mod = evol_loadmodule("ecs");
   if(Data.ecs_mod) {
-    IMPORT_NAMESPACE(ECS, Data.ecs_mod);
-    IMPORT_NAMESPACE(GameECS, Data.ecs_mod);
+    imports(Data.ecs_mod, (ECS, GameECS));
 
     if(GameECS) {
       Data.scriptComponentID = GameECS->registerComponent("ScriptComponent", sizeof(ScriptComponent), EV_ALIGNOF(ScriptComponent));
@@ -445,6 +453,9 @@ EV_DESTRUCTOR
   if(Data.ecs_mod != NULL) {
     evol_unloadmodule(Data.ecs_mod);
   }
+  if(Data.game_mod != NULL) {
+    evol_unloadmodule(Data.game_mod);
+  }
   clear_script_entries();
   hashmap_free(Data.scripts);
   return 0;
@@ -452,11 +463,11 @@ EV_DESTRUCTOR
 
 vec(U64)*
 _ev_script_getcollisionenterlist(
-    ECSGameWorldHandle world,
+    GameScene scene,
     U64 entt)
 {
-  if(GameECS->hasComponent(world, entt, Data.frameCollisionEnterListComponentID)) {
-    struct EntitiesList *list = GameECS->getComponent(world, entt, Data.frameCollisionEnterListComponentID);
+  if(Object->hasComponent(scene, entt, Data.frameCollisionEnterListComponentID)) {
+    struct EntitiesList *list = Object->getComponent(scene, entt, Data.frameCollisionEnterListComponentID);
     return &(list->entities);
   }
   return NULL;
@@ -464,11 +475,11 @@ _ev_script_getcollisionenterlist(
 
 vec(U64)*
 _ev_script_getcollisionleavelist(
-    ECSGameWorldHandle world,
+    GameScene scene,
     U64 entt)
 {
-  if(GameECS->hasComponent(world, entt, Data.frameCollisionLeaveListComponentID)) {
-    struct EntitiesList *list = GameECS->getComponent(world, entt, Data.frameCollisionLeaveListComponentID);
+  if(Object->hasComponent(scene, entt, Data.frameCollisionLeaveListComponentID)) {
+    struct EntitiesList *list = Object->getComponent(scene, entt, Data.frameCollisionLeaveListComponentID);
     return &(list->entities);
   }
   return NULL;
