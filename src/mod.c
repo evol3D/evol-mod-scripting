@@ -385,19 +385,26 @@ _ev_scriptinterface_loadapi(
 
 EV_CONSTRUCTOR
 {
+  ev_log_trace("[evmod_script] Constructor");
   Data.L = ev_lua_newState(true);
+  ev_log_trace("[evmod_script] Loading Script API");
+  _ev_scriptinterface_loadapi("subprojects/evmod_script/evol_api.lua");
+
   Data.scripts = hashmap_new(sizeof(ScriptEntry), 16, 0, 0, scriptentry_hash, scriptentry_compare, NULL);
 
   Data.game_mod = evol_loadmodule("game");
   if(Data.game_mod) {
+    ev_log_trace("[evmod_script] Found Game module. Importing namespaces (Object, Scene)");
     imports(Data.game_mod, (Object, Scene));
   }
 
   Data.ecs_mod = evol_loadmodule("ecs");
   if(Data.ecs_mod) {
+    ev_log_trace("[evmod_script] Found ECS module. Importing namespaces (ECS, GameECS)");
     imports(Data.ecs_mod, (ECS, GameECS));
 
     if(GameECS) {
+      ev_log_trace("[evmod_script] Registering component { ScriptComponent }");
       Data.scriptComponentID = GameECS->registerComponent("ScriptComponent", sizeof(ScriptComponent), EV_ALIGNOF(ScriptComponent));
 
       Data.frameCollisionEnterListComponentID = GameECS->registerComponent("FrameCollisionEnterListComponent", sizeof(FrameCollisionEnterListComponent), EV_ALIGNOF(FrameCollisionEnterListComponent));
@@ -423,7 +430,6 @@ EV_CONSTRUCTOR
   }
 
 
-  _ev_scriptinterface_loadapi("subprojects/evmod_script/evol_api.lua");
 
   return 0;
 }
