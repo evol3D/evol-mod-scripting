@@ -20,6 +20,7 @@ struct EntitiesList {
 typedef struct EntitiesList FrameCollisionEnterListComponent;
 typedef struct EntitiesList FrameCollisionLeaveListComponent;
 
+
 #define OBJECT_SELFREF "this"
 
 #define TAG_NAME(x) EV_STRINGIZE(EV_CONCAT(ScriptCB,x))
@@ -47,6 +48,11 @@ typedef enum {
 } ScriptCallbackFlagBits;
 typedef ScriptCallbackFlagBits ScriptCallbackFlags;
 
+
+typedef struct {
+  lua_State *L;
+} ScriptContext;
+
 struct {
   lua_State *L;
   evolmodule_t ecs_mod;
@@ -58,12 +64,17 @@ struct {
   GameComponentID frameCollisionLeaveListComponentID;
 
   struct hashmap *scripts;
+
+  vec(ScriptAPILoaderFN) api_loaders;
+  vec(ScriptContext) contexts;
 } Data;
 
 typedef struct {
   evstring script;
   ScriptCallbackFlags cbFlags;
+  ScriptContextHandle ctx_h;
 } ScriptComponent;
+
 typedef struct {
   evstring id_str;
   ScriptHandle component;
@@ -99,30 +110,31 @@ ScriptCallbackOnUpdateSystem(
   ECSEntityID *enttIDs = ECS->getQueryEntities(query);
   U32 count = ECS->getQueryMatchCount(query);
   ScriptComponent cmp;
-  lua_getglobal(Data.L, "Entities");
+  ScriptContext ctx;
 
   for(U32 i = 0; i < count; ++i) {
     cmp = scriptComponents[i];
+    ctx = Data.contexts[cmp.ctx_h];
+    lua_getglobal(ctx.L, "Entities");
     ECSEntityID entt = enttIDs[i];
-    lua_pushinteger(Data.L, entt);
-    lua_gettable(Data.L, -2);
+    lua_pushinteger(ctx.L, entt);
+    lua_gettable(ctx.L, -2);
 
-    lua_pushvalue(Data.L, -1);
-    lua_setglobal(Data.L, OBJECT_SELFREF);
+    lua_pushvalue(ctx.L, -1);
+    lua_setglobal(ctx.L, OBJECT_SELFREF);
 
     // Get `Entities[entt]["on_update"]
-    lua_pushstring(Data.L, "on_update");
-    lua_gettable(Data.L, -2);
-    if(lua_pcall(Data.L, 0, 0, 0)) {
-      ev_log_error("%s", lua_tostring(Data.L, -1));
-      lua_pop(Data.L, 1);
+    lua_pushstring(ctx.L, "on_update");
+    lua_gettable(ctx.L, -2);
+
+    if(lua_pcall(ctx.L, 0, 0, 0)) {
+      ev_log_error("%s", lua_tostring(ctx.L, -1));
+      lua_pop(ctx.L, 1);
     }
 
-    // Popping `Entities[entt]`
-    lua_pop(Data.L, 1);
+    // Popping `Entities[entt]` & `Entities`
+    lua_pop(ctx.L, 2);
   }
-  // Popping `Entities`
-  lua_pop(Data.L, 1);
 }
 
 void 
@@ -133,31 +145,31 @@ ScriptCallbackOnFixedUpdateSystem(
   ECSEntityID *enttIDs = ECS->getQueryEntities(query);
   U32 count = ECS->getQueryMatchCount(query);
   ScriptComponent cmp;
-  lua_getglobal(Data.L, "Entities");
+  ScriptContext ctx;
 
   for(U32 i = 0; i < count; ++i) {
     cmp = scriptComponents[i];
+    ctx = Data.contexts[cmp.ctx_h];
+    lua_getglobal(ctx.L, "Entities");
     ECSEntityID entt = enttIDs[i];
-    lua_pushinteger(Data.L, entt);
-    lua_gettable(Data.L, -2);
+    lua_pushinteger(ctx.L, entt);
+    lua_gettable(ctx.L, -2);
 
-    lua_pushvalue(Data.L, -1);
-    lua_setglobal(Data.L, OBJECT_SELFREF);
+    lua_pushvalue(ctx.L, -1);
+    lua_setglobal(ctx.L, OBJECT_SELFREF);
 
     // Get `Entities[entt]["on_fixedupdate"]
-    lua_pushstring(Data.L, "on_fixedupdate");
-    lua_gettable(Data.L, -2);
+    lua_pushstring(ctx.L, "on_fixedupdate");
+    lua_gettable(ctx.L, -2);
 
-    if(lua_pcall(Data.L, 0, 0, 0)) {
-      ev_log_error("%s", lua_tostring(Data.L, -1));
-      lua_pop(Data.L, 1);
+    if(lua_pcall(ctx.L, 0, 0, 0)) {
+      ev_log_error("%s", lua_tostring(ctx.L, -1));
+      lua_pop(ctx.L, 1);
     }
 
-    // Popping `Entities[entt]`
-    lua_pop(Data.L, 1);
+    // Popping `Entities[entt]` & `Entities`
+    lua_pop(ctx.L, 2);
   }
-  // Popping `Entities`
-  lua_pop(Data.L, 1);
 }
 
 void
@@ -170,43 +182,38 @@ ScriptCallbackOnCollisionEnterSystem(
 
   U32 count = ECS->getQueryMatchCount(query);
   ScriptComponent cmp;
-  lua_getglobal(Data.L, "Entities");
+  ScriptContext ctx;
 
   for(U32 i = 0; i < count; ++i) {
     cmp = scriptComponents[i];
+    ctx = Data.contexts[cmp.ctx_h];
+    lua_getglobal(ctx.L, "Entities");
     ECSEntityID entt = enttIDs[i];
     vec(ECSEntityID) collEntts = collisionEnterEntities[i].entities;
 
-    lua_pushinteger(Data.L, entt);
-    lua_gettable(Data.L, -2); // Entities[entt]
+    lua_pushinteger(ctx.L, entt);
+    lua_gettable(ctx.L, -2); // Entities[entt]
 
-    lua_pushvalue(Data.L, -1);
-    lua_setglobal(Data.L, OBJECT_SELFREF); // this = Entities[entt]
+    lua_pushvalue(ctx.L, -1);
+    lua_setglobal(ctx.L, OBJECT_SELFREF); // this = Entities[entt]
 
     for(U32 j = 0; j < vec_len(collEntts); j++) {
-      lua_pushstring(Data.L, "on_collisionenter");
-      lua_gettable(Data.L, -2); // this.on_collisionenter
+      lua_pushstring(ctx.L, "on_collisionenter");
+      lua_gettable(ctx.L, -2); // this.on_collisionenter
 
-      lua_pushinteger(Data.L, collEntts[j]);
-      lua_gettable(Data.L, -4); // Entities[collEntts[j]]
+      lua_pushinteger(ctx.L, collEntts[j]);
+      lua_gettable(ctx.L, -4); // Entities[collEntts[j]]
 
-      // REMOVE
-      if(lua_isnil(Data.L, -1)) {
-        assert(false);
-      }
-
-      if(lua_pcall(Data.L, 1, 0, 0)) {
-        ev_log_error("%s", lua_tostring(Data.L, -1));
-        lua_pop(Data.L, 1);
+      if(lua_pcall(ctx.L, 1, 0, 0)) {
+        ev_log_error("%s", lua_tostring(ctx.L, -1));
+        lua_pop(ctx.L, 1);
       }
     }
     vec_clear(collEntts);
 
-    // Popping `Entities[entt]`
-    lua_pop(Data.L, 1);
+    // Popping `Entities[entt]` & `Entities`
+    lua_pop(ctx.L, 2);
   }
-  // Popping `Entities`
-  lua_pop(Data.L, 1);
 }
 
 void
@@ -219,38 +226,38 @@ ScriptCallbackOnCollisionLeaveSystem(
 
   U32 count = ECS->getQueryMatchCount(query);
   ScriptComponent cmp;
-  lua_getglobal(Data.L, "Entities");
+  ScriptContext ctx;
 
   for(U32 i = 0; i < count; ++i) {
     cmp = scriptComponents[i];
+    ctx = Data.contexts[cmp.ctx_h];
+    lua_getglobal(ctx.L, "Entities");
     ECSEntityID entt = enttIDs[i];
     vec(GameEntityID) collEntts = collisionLeaveEntities[i].entities;
 
-    lua_pushinteger(Data.L, entt);
-    lua_gettable(Data.L, -2); // Entities[entt]
+    lua_pushinteger(ctx.L, entt);
+    lua_gettable(ctx.L, -2); // Entities[entt]
 
-    lua_pushvalue(Data.L, -1);
-    lua_setglobal(Data.L, OBJECT_SELFREF); // this = Entities[entt]
+    lua_pushvalue(ctx.L, -1);
+    lua_setglobal(ctx.L, OBJECT_SELFREF); // this = Entities[entt]
 
     for(U32 j = 0; j < vec_len(collEntts); j++) {
-      lua_pushstring(Data.L, "on_collisionleave");
-      lua_gettable(Data.L, -2); // this.on_collisionenter
+      lua_pushstring(ctx.L, "on_collisionleave");
+      lua_gettable(ctx.L, -2); // this.on_collisionenter
 
-      lua_pushinteger(Data.L, collEntts[j]);
-      lua_gettable(Data.L, -4); // Entities[collEntts[j]]
+      lua_pushinteger(ctx.L, collEntts[j]);
+      lua_gettable(ctx.L, -4); // Entities[collEntts[j]]
 
-      if(lua_pcall(Data.L, 1, 0, 0)) {
-        ev_log_error("%s", lua_tostring(Data.L, -1));
-        lua_pop(Data.L, 1);
+      if(lua_pcall(ctx.L, 1, 0, 0)) {
+        ev_log_error("%s", lua_tostring(ctx.L, -1));
+        lua_pop(ctx.L, 1);
       }
     }
     vec_clear(collEntts);
 
-    // Popping `Entities[entt]`
-    lua_pop(Data.L, 1);
+    // Popping `Entities[entt]` & `Entities`
+    lua_pop(ctx.L, 2);
   }
-  // Popping `Entities`
-  lua_pop(Data.L, 1);
 }
 
 void
@@ -259,9 +266,16 @@ _ev_script_addtoentity(
     GameEntityID entt,
     ScriptHandle handle)
 {
-  ECSGameWorldHandle world = Scene->getECSWorld(scene);
-  GameECS->setComponent(world, entt, Data.scriptComponentID, handle);
   ScriptComponent *p_cmp = (ScriptComponent *)handle;
+  ScriptContextHandle ctx_h = Scene->getScriptContext(scene);
+  ScriptContext ctx = Data.contexts[ctx_h];
+
+  ECSGameWorldHandle world = Scene->getECSWorld(scene);
+  GameECS->setComponent(world, entt, Data.scriptComponentID, &(ScriptComponent) {
+      .script = p_cmp->script,
+      .cbFlags = p_cmp->cbFlags,
+      .ctx_h = ctx_h
+  });
 
 #define SCRIPT_OP(x) \
   if(p_cmp->cbFlags & EV_SCRIPT_CALLBACK(x)) { \
@@ -277,32 +291,32 @@ _ev_script_addtoentity(
     GameECS->addComponent(world, entt, Data.frameCollisionLeaveListComponentID);
   }
 
-  lua_getglobal(Data.L, "Entity");
-  lua_getfield(Data.L, -1, "new");
-  lua_getglobal(Data.L, "Entity");
-  lua_pushinteger(Data.L, entt);
-  if(lua_pcall(Data.L, 2, 1, 0)) {
-    ev_log_error("%s", lua_tostring(Data.L, -1));
-    lua_pop(Data.L, 1);
+  lua_getglobal(ctx.L, "Entity");
+  lua_getfield(ctx.L, -1, "new");
+  lua_getglobal(ctx.L, "Entity");
+  lua_pushinteger(ctx.L, entt);
+  if(lua_pcall(ctx.L, 2, 1, 0)) {
+    ev_log_error("%s", lua_tostring(ctx.L, -1));
+    lua_pop(ctx.L, 1);
   }
 
-  lua_setglobal(Data.L, OBJECT_SELFREF);
-  lua_pop(Data.L, 1);
+  lua_setglobal(ctx.L, OBJECT_SELFREF);
+  lua_pop(ctx.L, 1);
 
   ScriptComponent * cmp = (ScriptComponent *)handle;
-  ev_lua_runstring(Data.L, cmp->script);
+  ev_lua_runstring(ctx.L, cmp->script);
 
   if(p_cmp->cbFlags & EV_SCRIPT_CALLBACK(on_init)) {
-    lua_getglobal(Data.L, OBJECT_SELFREF);
-    lua_pushstring(Data.L, "on_init");
-    lua_gettable(Data.L, -2);
+    lua_getglobal(ctx.L, OBJECT_SELFREF);
+    lua_pushstring(ctx.L, "on_init");
+    lua_gettable(ctx.L, -2);
 
-    if(lua_pcall(Data.L, 0, 0, 0)) {
-      ev_log_error("%s", lua_tostring(Data.L, -1));
-      lua_pop(Data.L, 1);
+    if(lua_pcall(ctx.L, 0, 0, 0)) {
+      ev_log_error("%s", lua_tostring(ctx.L, -1));
+      lua_pop(ctx.L, 1);
     }
 
-    lua_pop(Data.L, 1);
+    lua_pop(ctx.L, 1);
   }
 }
 
@@ -312,6 +326,7 @@ _ev_script_new(
     CONST_STR scriptString)
 {
   ScriptComponent *cmp = malloc(sizeof(ScriptComponent)); 
+  cmp->ctx_h = -1;
   cmp->script = evstring_new(scriptString);
 
   lua_newtable(Data.L);
@@ -376,19 +391,41 @@ scriptentry_compare(
 
 void
 _ev_scriptinterface_loadapi(
+    ScriptContextHandle ctx_h,
     CONST_STR file_path)
 {
-  ev_lua_runfile(Data.L, file_path);
+  ev_lua_runfile(Data.contexts[ctx_h].L, file_path);
 }
 
+void
+scriptcontext_destr(
+    void *data)
+{
+  ScriptContext *ctx = (ScriptContext *)data;
+  if(ctx->L) {
+    ev_lua_destroyState(&(ctx->L));
+  }
+}
 
+void
+ev_scriptmod_scriptapi_loader(
+    ScriptContextHandle ctx_h)
+{
+  _ev_scriptinterface_loadapi(ctx_h, "subprojects/evmod_script/evol_api.lua");
+}
 
 EV_CONSTRUCTOR
 {
   ev_log_trace("[evmod_script] Constructor");
+
+  Data.api_loaders = vec_init(ScriptAPILoaderFN);
+  Data.contexts = vec_init(ScriptContext, NULL, scriptcontext_destr);
+
+  ScriptAPILoaderFN fn = ev_scriptmod_scriptapi_loader;
+  vec_push(&Data.api_loaders, &fn);
+
   Data.L = ev_lua_newState(true);
   ev_log_trace("[evmod_script] Loading Script API");
-  _ev_scriptinterface_loadapi("subprojects/evmod_script/evol_api.lua");
 
   Data.scripts = hashmap_new(sizeof(ScriptEntry), 16, 0, 0, scriptentry_hash, scriptentry_compare, NULL);
 
@@ -464,6 +501,9 @@ EV_DESTRUCTOR
   }
   clear_script_entries();
   hashmap_free(Data.scripts);
+
+  vec_fini(Data.api_loaders);
+  vec_fini(Data.contexts);
   return 0;
 }
 
@@ -493,31 +533,35 @@ _ev_script_getcollisionleavelist(
 
 ScriptType
 _ev_scriptinterface_addtype(
+    ScriptContextHandle ctx_h,
     CONST_STR typename,
     U32 size)
 {
-  return luaA_type_add(Data.L, typename, size);
+  return luaA_type_add(Data.contexts[ctx_h].L, typename, size);
 }
 
 ScriptType
 _ev_scriptinterface_gettype(
+    ScriptContextHandle ctx_h,
     CONST_STR typename)
 {
-  return luaA_type_find(Data.L, typename);
+  return luaA_type_find(Data.contexts[ctx_h].L, typename);
 }
 
 ScriptType
 _ev_scriptinterface_addstruct(
+    ScriptContextHandle ctx_h,
     CONST_STR typename,
     U32 size,
     U32 member_count,
     ScriptStructMember *members)
 {
-  ScriptType sType = luaA_type_add(Data.L, typename, size);
-  luaA_struct_type(Data.L, sType);
+  ScriptContext ctx = Data.contexts[ctx_h];
+  ScriptType sType = luaA_type_add(ctx.L, typename, size);
+  luaA_struct_type(ctx.L, sType);
 
   for(U32 i = 0; i < member_count; ++i) {
-    luaA_struct_member_type(Data.L, sType, members[i].name, members[i].type, members[i].offset);
+    luaA_struct_member_type(ctx.L, sType, members[i].name, members[i].type, members[i].offset);
   }
 
   return sType;
@@ -527,15 +571,17 @@ _ev_scriptinterface_addstruct(
 
 void
 _ev_scriptinterface_addfunction(
+    ScriptContextHandle ctx_h,
     FN_PTR func, 
     CONST_STR func_name, 
     ScriptType rettype, 
     U32 arg_count,
     ScriptType *args)
 {
+  ScriptContext ctx = Data.contexts[ctx_h];
   static ScriptType voidType = 0;
   if(voidType == 0) {
-    voidType = _ev_scriptinterface_gettype("void");
+    voidType = _ev_scriptinterface_gettype(ctx_h, "void");
   }
 
   luaA_Func auto_func;
@@ -545,14 +591,56 @@ _ev_scriptinterface_addfunction(
     auto_func = luaA_wrap_functions[arg_count];
   }
 
-  luaA_function_register_type(Data.L, func, auto_func, func_name, rettype, arg_count, args);
+  luaA_function_register_type(ctx.L, func, auto_func, func_name, rettype, arg_count, args);
+}
+
+void
+ev_scriptinterface_registerapiloadfn(
+    ScriptAPILoaderFN func)
+{
+  vec_push(&Data.api_loaders, &func);
+  for(size_t ctx_h = 0; ctx_h < vec_len(Data.contexts); ctx_h++) {
+    func(ctx_h);
+  }
+}
+
+ScriptContextHandle
+ev_scriptcontext_newcontext()
+{
+  ScriptContext ctx = {
+    .L = ev_lua_newState(true)
+  };
+
+  if(ctx.L == NULL) {
+    ev_log_error("[evscript_mod] Failed to create a new ScriptContext. Lua State creation failed.");
+    return -1;
+  }
+
+  ScriptContextHandle ctx_h = vec_push((vec_t*)&Data.contexts, &ctx);
+
+  for(size_t i = 0; i < vec_len(Data.api_loaders); i++) {
+    Data.api_loaders[i](ctx_h);
+  }
+
+  return ctx_h;
+}
+
+void
+ev_scriptcontext_destroycontext(
+    ScriptContextHandle handle)
+{
+  ScriptContext ctx = Data.contexts[handle];
+  EvLuaUtilsResult res = ev_lua_destroyState(&ctx.L);
+
+  if(res != EV_LUAUTILS_SUCCESS) {
+    ev_log_error("[evscript_mod] Failed to destroy ScriptContext with handle { %llu }. Reason: %s", handle, EvLuaUtilsResultStrings[res]);
+  }
 }
 
 EV_BINDINGS
 {
   EV_NS_BIND_FN(Script, new, _ev_script_new);
   EV_NS_BIND_FN(Script, addToEntity, _ev_script_addtoentity);
-
   EV_NS_BIND_FN(Script, getCollisionEnterList, _ev_script_getcollisionenterlist);
   EV_NS_BIND_FN(Script, getCollisionLeaveList, _ev_script_getcollisionleavelist);
 
@@ -560,6 +648,9 @@ EV_BINDINGS
   EV_NS_BIND_FN(ScriptInterface, addType, _ev_scriptinterface_addtype);
   EV_NS_BIND_FN(ScriptInterface, getType, _ev_scriptinterface_gettype);
   EV_NS_BIND_FN(ScriptInterface, addStruct, _ev_scriptinterface_addstruct);
-
   EV_NS_BIND_FN(ScriptInterface, loadAPI, _ev_scriptinterface_loadapi);
+  EV_NS_BIND_FN(ScriptInterface, registerAPILoadFn, ev_scriptinterface_registerapiloadfn);
+
+  EV_NS_BIND_FN(ScriptContext, newContext, ev_scriptcontext_newcontext);
+  EV_NS_BIND_FN(ScriptContext, destroyContext, ev_scriptcontext_destroycontext);
 }

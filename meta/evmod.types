@@ -8,3 +8,7 @@ TYPE(ScriptStructMember, struct{
   U32 offset;
 })
 
+TYPE(ScriptContextHandle, GenericHandle);
+
+typedef void (*ScriptAPILoaderFN)(ScriptContextHandle);
+

@@ -8,12 +8,29 @@ EV_NS_DEF_FN(vec(U64) *, getCollisionLeaveList, (GenericHandle, game_scene), (Ge
 
 EV_NS_DEF_END(Script)
 
+/* =========================================================================================================================================== */
+/* =========================================================================================================================================== */
+/* =========================================================================================================================================== */
+
 EV_NS_DEF_BEGIN(ScriptInterface)
 
-EV_NS_DEF_FN(ScriptType, addType, (CONST_STR, typename), (U32, size))
-EV_NS_DEF_FN(ScriptType, getType, (CONST_STR, typename))
-EV_NS_DEF_FN(void, addFunction, (FN_PTR, func), (CONST_STR, func_name), (ScriptType, rettype), (U32, arg_count), (ScriptType *, args))
-EV_NS_DEF_FN(ScriptType, addStruct, (CONST_STR, typename), (U32, size), (U32, member_count), (ScriptStructMember *, members))
-EV_NS_DEF_FN(void, loadAPI, (CONST_STR, file_path))
+EV_NS_DEF_FN(ScriptType, addType, (ScriptContextHandle, ctx_h), (CONST_STR, typename), (U32, size))
+EV_NS_DEF_FN(ScriptType, getType, (ScriptContextHandle, ctx_h), (CONST_STR, typename))
+EV_NS_DEF_FN(void, addFunction, (ScriptContextHandle, ctx_h), (FN_PTR, func), (CONST_STR, func_name), (ScriptType, rettype), (U32, arg_count), (ScriptType *, args))
+EV_NS_DEF_FN(ScriptType, addStruct, (ScriptContextHandle, ctx_h), (CONST_STR, typename), (U32, size), (U32, member_count), (ScriptStructMember *, members))
+EV_NS_DEF_FN(void, loadAPI, (ScriptContextHandle, ctx_h), (CONST_STR, file_path))
+EV_NS_DEF_FN(void, registerAPILoadFn, (ScriptAPILoaderFN, func))
 
 EV_NS_DEF_END(ScriptInterface)
+
+/* =========================================================================================================================================== */
+/* =========================================================================================================================================== */
+/* =========================================================================================================================================== */
+
+EV_NS_DEF_BEGIN(ScriptContext)
+
+EV_NS_DEF_FN(ScriptContextHandle, newContext, (,))
+EV_NS_DEF_FN(void, destroyContext, (ScriptContextHandle, handle))
+
+EV_NS_DEF_END(ScriptContext)
+
