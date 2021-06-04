@@ -128,7 +128,7 @@ ScriptCallbackOnUpdateSystem(
     lua_pushstring(ctx.L, "on_update");
     lua_gettable(ctx.L, -2);
 
-    if(lua_pcall(ctx.L, 0, 0, 0)) {
+    if(ev_lua_pcall(ctx.L, 0, 0, 0)) {
       ev_log_error("%s", lua_tostring(ctx.L, -1));
       lua_pop(ctx.L, 1);
     }
@@ -163,7 +163,7 @@ ScriptCallbackOnFixedUpdateSystem(
     lua_pushstring(ctx.L, "on_fixedupdate");
     lua_gettable(ctx.L, -2);
 
-    if(lua_pcall(ctx.L, 0, 0, 0)) {
+    if(ev_lua_pcall(ctx.L, 0, 0, 0)) {
       ev_log_error("%s", lua_tostring(ctx.L, -1));
       lua_pop(ctx.L, 1);
     }
@@ -205,7 +205,7 @@ ScriptCallbackOnCollisionEnterSystem(
       lua_pushinteger(ctx.L, collEntts[j]);
       lua_gettable(ctx.L, -4); // Entities[collEntts[j]]
 
-      if(lua_pcall(ctx.L, 1, 0, 0)) {
+      if(ev_lua_pcall(ctx.L, 1, 0, 0)) {
         ev_log_error("%s", lua_tostring(ctx.L, -1));
         lua_pop(ctx.L, 1);
       }
@@ -249,7 +249,7 @@ ScriptCallbackOnCollisionLeaveSystem(
       lua_pushinteger(ctx.L, collEntts[j]);
       lua_gettable(ctx.L, -4); // Entities[collEntts[j]]
 
-      if(lua_pcall(ctx.L, 1, 0, 0)) {
+      if(ev_lua_pcall(ctx.L, 1, 0, 0)) {
         ev_log_error("%s", lua_tostring(ctx.L, -1));
         lua_pop(ctx.L, 1);
       }
@@ -296,7 +296,7 @@ _ev_script_addtoentity(
   lua_getfield(ctx.L, -1, "new");
   lua_getglobal(ctx.L, "Entity");
   lua_pushinteger(ctx.L, entt);
-  if(lua_pcall(ctx.L, 2, 1, 0)) {
+  if(ev_lua_pcall(ctx.L, 2, 1, 0)) {
     ev_log_error("%s", lua_tostring(ctx.L, -1));
     lua_pop(ctx.L, 1);
   }
@@ -312,7 +312,7 @@ _ev_script_addtoentity(
     lua_pushstring(ctx.L, "on_init");
     lua_gettable(ctx.L, -2);
 
-    if(lua_pcall(ctx.L, 0, 0, 0)) {
+    if(ev_lua_pcall(ctx.L, 0, 0, 0)) {
       ev_log_error("%s", lua_tostring(ctx.L, -1));
       lua_pop(ctx.L, 1);
     }
