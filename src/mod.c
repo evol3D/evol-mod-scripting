@@ -58,7 +58,6 @@ typedef struct {
 struct {
   lua_State *L;
   evolmodule_t ecs_mod;
-  evolmodule_t game_mod;
   GameComponentID scriptComponentID;
   GameTagID scriptTagIDs[SCRIPT_TAG(COUNT)];
 
@@ -431,10 +430,10 @@ EV_CONSTRUCTOR
 
   Data.scripts = hashmap_new(sizeof(ScriptEntry), 16, 0, 0, scriptentry_hash, scriptentry_compare, NULL);
 
-  Data.game_mod = evol_loadmodule("game");
-  if(Data.game_mod) {
+  evolmodule_t game_mod = evol_loadmodule_weak("game");
+  if(game_mod) {
     ev_log_trace("[evmod_script] Found Game module. Importing namespaces (Object, Scene)");
-    imports(Data.game_mod, (Object, Scene));
+    imports(game_mod, (Object, Scene));
   }
 
   Data.ecs_mod = evol_loadmodule("ecs");
@@ -497,9 +496,6 @@ EV_DESTRUCTOR
   ev_lua_destroyState(&Data.L);
   if(Data.ecs_mod != NULL) {
     evol_unloadmodule(Data.ecs_mod);
-  }
-  if(Data.game_mod != NULL) {
-    evol_unloadmodule(Data.game_mod);
   }
   clear_script_entries();
   hashmap_free(Data.scripts);
