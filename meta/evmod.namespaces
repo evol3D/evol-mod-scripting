@@ -30,6 +30,7 @@ EV_NS_DEF_END(ScriptInterface)
 EV_NS_DEF_BEGIN(ScriptContext)
 
 EV_NS_DEF_FN(ScriptContextHandle, newContext, (,))
+EV_NS_DEF_FN(ScriptContextHandle, invalidHandle, (,))
 EV_NS_DEF_FN(void, destroyContext, (ScriptContextHandle, handle))
 
 EV_NS_DEF_END(ScriptContext)

@@ -9,6 +9,8 @@
 #include <luajit.h>
 #include <lauxlib.h>
 
+#define INVALID_CONTEXT_HANDLE (~0ull)
+
 #define IMPORT_MODULE evmod_ecs
 #include <evol/meta/module_import.h>
 #define IMPORT_MODULE evmod_game
@@ -625,12 +627,24 @@ ev_scriptcontext_newcontext()
   return ctx_h;
 }
 
+ScriptContextHandle
+ev_scriptcontext_invalidhandle()
+{
+  return INVALID_CONTEXT_HANDLE;
+}
+
 void
 ev_scriptcontext_destroycontext(
     ScriptContextHandle handle)
 {
-  ScriptContext ctx = Data.contexts[handle];
-  EvLuaUtilsResult res = ev_lua_destroyState(&ctx.L);
+  if(handle == INVALID_CONTEXT_HANDLE) {
+    return;
+  }
+  ScriptContext *ctx = &Data.contexts[handle];
+  if(ctx->L == NULL) {
+    return;
+  }
+  EvLuaUtilsResult res = ev_lua_destroyState(&ctx->L);
 
   if(res != EV_LUAUTILS_SUCCESS) {
     ev_log_error("[evscript_mod] Failed to destroy ScriptContext with handle { %llu }. Reason: %s", handle, EvLuaUtilsResultStrings[res]);
@@ -651,6 +665,7 @@ EV_BINDINGS
   EV_NS_BIND_FN(ScriptInterface, loadAPI, _ev_scriptinterface_loadapi);
   EV_NS_BIND_FN(ScriptInterface, registerAPILoadFn, ev_scriptinterface_registerapiloadfn);
 
+  EV_NS_BIND_FN(ScriptContext, invalidHandle, ev_scriptcontext_invalidhandle);
   EV_NS_BIND_FN(ScriptContext, newContext, ev_scriptcontext_newcontext);
   EV_NS_BIND_FN(ScriptContext, destroyContext, ev_scriptcontext_destroycontext);
 }
