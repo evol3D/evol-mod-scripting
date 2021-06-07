@@ -10,5 +10,5 @@ TYPE(ScriptStructMember, struct{
 
 TYPE(ScriptContextHandle, GenericHandle);
 
-typedef void (*ScriptAPILoaderFN)(ScriptContextHandle);
+typedef void (*ScriptAPILoaderFN)(PTR, ScriptContextHandle);
 

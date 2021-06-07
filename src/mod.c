@@ -386,8 +386,10 @@ scriptcontext_destr(
 
 void
 ev_scriptmod_scriptapi_loader(
+    EVNS_ScriptInterface *_ScriptInterface,
     ScriptContextHandle ctx_h)
 {
+  EV_UNUSED_PARAMS(_ScriptInterface);
   _ev_scriptinterface_loadapi(ctx_h, "subprojects/evmod_script/evol_api.lua");
 }
 
@@ -554,7 +556,7 @@ ev_scriptinterface_registerapiloadfn(
 {
   vec_push(&Data.api_loaders, &func);
   for(size_t ctx_h = 0; ctx_h < vec_len(Data.contexts); ctx_h++) {
-    func(ctx_h);
+    func(&SELF(ScriptInterface), ctx_h);
   }
 }
 
@@ -573,7 +575,7 @@ ev_scriptcontext_newcontext()
   ScriptContextHandle ctx_h = vec_push((vec_t*)&Data.contexts, &ctx);
 
   for(size_t i = 0; i < vec_len(Data.api_loaders); i++) {
-    Data.api_loaders[i](ctx_h);
+    Data.api_loaders[i](&SELF(ScriptInterface), ctx_h);
   }
 
   return ctx_h;
