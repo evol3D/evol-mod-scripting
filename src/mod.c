@@ -4,8 +4,6 @@
 #include <evol/common/ev_log.h>
 #include <evol/utils/lua_evutils.h>
 
-#include <hashmap.h>
-
 #include <luajit.h>
 #include <lauxlib.h>
 
@@ -21,7 +19,6 @@ struct EntitiesList {
 };
 typedef struct EntitiesList FrameCollisionEnterListComponent;
 typedef struct EntitiesList FrameCollisionLeaveListComponent;
-
 
 #define OBJECT_SELFREF "this"
 
@@ -64,7 +61,7 @@ struct {
   GameComponentID frameCollisionEnterListComponentID;
   GameComponentID frameCollisionLeaveListComponentID;
 
-  struct hashmap *scripts;
+  Map(evstring, ScriptHandle) scripts;
 
   vec(ScriptAPILoaderFN) api_loaders;
   vec(ScriptContext) contexts;
@@ -76,10 +73,16 @@ typedef struct {
   ScriptContextHandle ctx_h;
 } ScriptComponent;
 
-typedef struct {
-  evstring id_str;
-  ScriptHandle component;
-} ScriptEntry;
+void
+scripthandle_free(
+    ScriptHandle handle) 
+{
+  ScriptComponent *cmp = (ScriptComponent*)handle;
+  evstring_free(cmp->script);
+  free(cmp);
+}
+
+HashmapDefine(evstring, ScriptHandle, evstring_free, scripthandle_free);
 
 static_assert(sizeof(ScriptType) == sizeof(lua_Integer), "ScriptType is not the same size as lua_Integer");
 
@@ -359,35 +362,8 @@ _ev_script_new(
   /* lua_setglobal(Data.L, "object"); */
 
   ScriptHandle handle = (ScriptHandle)cmp;
-  ScriptEntry entry = {
-    .id_str = evstring_new(id),
-    .component = handle,
-  };
-  hashmap_set(Data.scripts, &entry);
+  Hashmap(evstring, ScriptHandle).push(Data.scripts, evstring_new(id), handle);
   return handle;
-}
-
-U64
-scriptentry_hash(
-    const PTR data,
-    U64 seed0,
-    U64 seed1)
-{
-  const ScriptEntry *entry = data;
-  return hashmap_murmur(entry->id_str, evstring_len(entry->id_str), seed0, seed1);
-}
-
-I32 
-scriptentry_compare(
-  const PTR data1, 
-  const PTR data2, 
-  PTR _udata)
-{
-  EV_UNUSED_PARAM(_udata);
-  const ScriptEntry *entry1 = data1;
-  const ScriptEntry *entry2 = data2;
-
-  return evstring_cmp(entry1->id_str, entry2->id_str);
 }
 
 void
@@ -428,7 +404,7 @@ EV_CONSTRUCTOR
   Data.L = ev_lua_newState(true);
   ev_log_trace("[evmod_script] Loading Script API");
 
-  Data.scripts = hashmap_new(sizeof(ScriptEntry), 16, 0, 0, scriptentry_hash, scriptentry_compare, NULL);
+  Data.scripts = Hashmap(evstring, ScriptHandle).new();
 
   evolmodule_t game_mod = evol_loadmodule_weak("game");
   if(game_mod) {
@@ -472,33 +448,13 @@ EV_CONSTRUCTOR
   return 0;
 }
 
-bool
-script_delete(
-    const PTR data,
-    PTR _udata)
-{
-  EV_UNUSED_PARAM(_udata);
-  ScriptEntry *entry = data;
-  evstring_free(entry->id_str);
-  evstring_free(((ScriptComponent*)entry->component)->script);
-  free(entry->component);
-  return true;
-}
-
-void 
-clear_script_entries()
-{
-  hashmap_scan(Data.scripts, script_delete, NULL);
-}
-
 EV_DESTRUCTOR 
 {
   ev_lua_destroyState(&Data.L);
   if(Data.ecs_mod != NULL) {
     evol_unloadmodule(Data.ecs_mod);
   }
-  clear_script_entries();
-  hashmap_free(Data.scripts);
+  Hashmap(evstring, ScriptHandle).free(Data.scripts);
 
   vec_fini(Data.api_loaders);
   vec_fini(Data.contexts);
