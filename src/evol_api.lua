@@ -14,6 +14,10 @@ function Vec3:new(nx, ny, nz)
   return out
 end
 
+Vec3.to_string = function(self)
+  return '('..self.x..', '..self.y..', '..self.z..')'
+end
+
 Vec3.__add = function(v1, v2)
   return Vec3:new(
     v1.x + v2.x,
