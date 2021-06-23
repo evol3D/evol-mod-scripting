@@ -12,6 +12,8 @@ luajit_dep = dependency('luajit')
 
 mod_src = [
   'src/mod.c',
+
+  'src/collision_callbacks/collision_callbacks.c',
 ]
 
 mod_incdir = [

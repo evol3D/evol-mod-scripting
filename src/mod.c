@@ -1,84 +1,13 @@
 #define EV_MODULE_DEFINE
 #include <evol/evolmod.h>
 
-#include <evol/common/ev_log.h>
-#include <evol/utils/lua_evutils.h>
+#include <script_common.h>
+#include "collision_callbacks/collision_callbacks.h"
 
-#include <luajit.h>
-#include <lauxlib.h>
-
-#define INVALID_CONTEXT_HANDLE (~0ull)
-
-#define IMPORT_MODULE evmod_ecs
-#include <evol/meta/module_import.h>
 #define IMPORT_MODULE evmod_game
 #include <evol/meta/module_import.h>
 
-// TODO This is currently being used by both the physics module and the 
-// scripting module. One solution would be to use the Event System for 
-// dispatching collision events. However, that would mean that collision
-// callbacks will be delayed by one frame.
-// Another solution is to expose the ability for modules to create their own
-// scripting callback functions. This seems a bit more plausible but it's not
-// obvious whether it's worth it.
-struct EntitiesList {
-  vec(GameEntityID) entities;
-};
-typedef struct EntitiesList FrameCollisionEnterListComponent;
-typedef struct EntitiesList FrameCollisionLeaveListComponent;
-
-#define OBJECT_SELFREF "this"
-
-#define TAG_NAME(x) EV_STRINGIZE(EV_CONCAT(ScriptCB,x))
-#define SCRIPT_TAG(x) EV_CONCAT(SCRIPT_TAG_,x)
-#define EV_SCRIPT_CALLBACK(x) EV_CONCAT(EV_SCRIPT_CALLBACK_,x)
-
-#define SCRIPT_CALLBACK_FUNCTIONS() \
-  SCRIPT_OP(on_init)           \
-  SCRIPT_OP(on_update)         \
-  SCRIPT_OP(on_fixedupdate)    \
-  SCRIPT_OP(on_collisionenter) \
-  SCRIPT_OP(on_collisionleave)
-
-typedef enum {
-#define SCRIPT_OP(x) SCRIPT_TAG(x),
-  SCRIPT_CALLBACK_FUNCTIONS()
-#undef SCRIPT_OP
-  SCRIPT_TAG(COUNT)
-} ScriptCallbackTags;
-
-typedef enum {
-#define SCRIPT_OP(x) EV_SCRIPT_CALLBACK(x) = 1 << SCRIPT_TAG(x),
-  SCRIPT_CALLBACK_FUNCTIONS()
-#undef SCRIPT_OP
-} ScriptCallbackFlagBits;
-typedef ScriptCallbackFlagBits ScriptCallbackFlags;
-
-
-typedef struct {
-  lua_State *L;
-} ScriptContext;
-
-struct {
-  lua_State *L;
-  evolmodule_t ecs_mod;
-  GameComponentID scriptComponentID;
-  GameTagID scriptTagIDs[SCRIPT_TAG(COUNT)];
-
-  GameComponentID frameCollisionEnterListComponentID;
-  GameComponentID frameCollisionLeaveListComponentID;
-
-  Map(evstring, ScriptHandle) scripts;
-
-  vec(ScriptAPILoaderFN) api_loaders;
-  vec(ScriptContext) contexts;
-} Data;
-
-typedef struct {
-  evstring script;
-  ScriptCallbackFlags cbFlags;
-  ScriptContextHandle ctx_h;
-} ScriptComponent;
+struct ScriptModuleData Data;
 
 void
 scripthandle_free(
@@ -89,29 +18,9 @@ scripthandle_free(
   free(cmp);
 }
 
-HashmapDefine(evstring, ScriptHandle, evstring_free, scripthandle_free);
+HashmapDefine(evstring, ScriptHandle, evstring_free, scripthandle_free)
 
 static_assert(sizeof(ScriptType) == sizeof(lua_Integer), "ScriptType is not the same size as lua_Integer");
-
-void
-onAddEntitiesList(
-    ECSQuery query)
-{
-  struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
-  list->entities = vec_init(ECSEntityID);
-}
-
-// For some reason, this doesn't seem to get called when the ECS module is
-// destructed. I'm assuming it doesn't matter much since the destruction of
-// the module should free all of its allocated memory. However, ECS->deleteEntity
-// seems to trigger the OnRemove event.
-void
-onRemoveEntitiesList(
-    ECSQuery query)
-{
-  struct EntitiesList *list = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 1);
-  vec_fini(list->entities);
-}
 
 void 
 ScriptCallbackOnUpdateSystem(
@@ -177,94 +86,6 @@ ScriptCallbackOnFixedUpdateSystem(
       ev_log_error("%s", lua_tostring(ctx.L, -1));
       lua_pop(ctx.L, 1);
     }
-
-    // Popping `Entities[entt]` & `Entities`
-    lua_pop(ctx.L, 2);
-  }
-}
-
-void
-ScriptCallbackOnCollisionEnterSystem(
-    ECSQuery query)
-{
-  ScriptComponent *scriptComponents = ECS->getQueryColumn(query, sizeof(ScriptComponent), 1);
-  struct EntitiesList *collisionEnterEntities = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 2);
-  ECSEntityID *enttIDs = ECS->getQueryEntities(query);
-
-  U32 count = ECS->getQueryMatchCount(query);
-  ScriptComponent cmp;
-  ScriptContext ctx;
-
-  for(U32 i = 0; i < count; ++i) {
-    cmp = scriptComponents[i];
-    ctx = Data.contexts[cmp.ctx_h];
-    lua_getglobal(ctx.L, "Entities");
-    ECSEntityID entt = enttIDs[i];
-    vec(ECSEntityID) collEntts = collisionEnterEntities[i].entities;
-
-    lua_pushinteger(ctx.L, entt);
-    lua_gettable(ctx.L, -2); // Entities[entt]
-
-    lua_pushvalue(ctx.L, -1);
-    lua_setglobal(ctx.L, OBJECT_SELFREF); // this = Entities[entt]
-
-    for(U32 j = 0; j < vec_len(collEntts); j++) {
-      lua_pushstring(ctx.L, "on_collisionenter");
-      lua_gettable(ctx.L, -2); // this.on_collisionenter
-
-      lua_pushinteger(ctx.L, collEntts[j]);
-      lua_gettable(ctx.L, -4); // Entities[collEntts[j]]
-
-      if(ev_lua_pcall(ctx.L, 1, 0, 0)) {
-        ev_log_error("%s", lua_tostring(ctx.L, -1));
-        lua_pop(ctx.L, 1);
-      }
-    }
-    vec_clear(collEntts);
-
-    // Popping `Entities[entt]` & `Entities`
-    lua_pop(ctx.L, 2);
-  }
-}
-
-void
-ScriptCallbackOnCollisionLeaveSystem(
-    ECSQuery query)
-{  
-  ScriptComponent *scriptComponents = ECS->getQueryColumn(query, sizeof(ScriptComponent), 1);
-  struct EntitiesList *collisionLeaveEntities = ECS->getQueryColumn(query, sizeof(struct EntitiesList), 2);
-  ECSEntityID *enttIDs = ECS->getQueryEntities(query);
-
-  U32 count = ECS->getQueryMatchCount(query);
-  ScriptComponent cmp;
-  ScriptContext ctx;
-
-  for(U32 i = 0; i < count; ++i) {
-    cmp = scriptComponents[i];
-    ctx = Data.contexts[cmp.ctx_h];
-    lua_getglobal(ctx.L, "Entities");
-    ECSEntityID entt = enttIDs[i];
-    vec(GameEntityID) collEntts = collisionLeaveEntities[i].entities;
-
-    lua_pushinteger(ctx.L, entt);
-    lua_gettable(ctx.L, -2); // Entities[entt]
-
-    lua_pushvalue(ctx.L, -1);
-    lua_setglobal(ctx.L, OBJECT_SELFREF); // this = Entities[entt]
-
-    for(U32 j = 0; j < vec_len(collEntts); j++) {
-      lua_pushstring(ctx.L, "on_collisionleave");
-      lua_gettable(ctx.L, -2); // this.on_collisionenter
-
-      lua_pushinteger(ctx.L, collEntts[j]);
-      lua_gettable(ctx.L, -4); // Entities[collEntts[j]]
-
-      if(ev_lua_pcall(ctx.L, 1, 0, 0)) {
-        ev_log_error("%s", lua_tostring(ctx.L, -1));
-        lua_pop(ctx.L, 1);
-      }
-    }
-    vec_clear(collEntts);
 
     // Popping `Entities[entt]` & `Entities`
     lua_pop(ctx.L, 2);
@@ -407,8 +228,8 @@ EV_CONSTRUCTOR
   Data.api_loaders = vec_init(ScriptAPILoaderFN);
   Data.contexts = vec_init(ScriptContext, NULL, scriptcontext_destr);
 
-  ScriptAPILoaderFN fn = ev_scriptmod_scriptapi_loader;
-  vec_push(&Data.api_loaders, &fn);
+  ScriptAPILoaderFN fn = (ScriptAPILoaderFN)ev_scriptmod_scriptapi_loader;
+  vec_push((vec_t*)&Data.api_loaders, &fn);
 
   Data.L = ev_lua_newState(true);
   ev_log_trace("[evmod_script] Loading Script API");
@@ -430,15 +251,6 @@ EV_CONSTRUCTOR
       ev_log_trace("[evmod_script] Registering component { ScriptComponent }");
       Data.scriptComponentID = GameECS->registerComponent("ScriptComponent", sizeof(ScriptComponent), EV_ALIGNOF(ScriptComponent));
 
-      Data.frameCollisionEnterListComponentID = GameECS->registerComponent("FrameCollisionEnterListComponent", sizeof(FrameCollisionEnterListComponent), EV_ALIGNOF(FrameCollisionEnterListComponent));
-      Data.frameCollisionLeaveListComponentID = GameECS->registerComponent("FrameCollisionLeaveListComponent", sizeof(FrameCollisionLeaveListComponent), EV_ALIGNOF(FrameCollisionLeaveListComponent));
-
-      GameECS->setOnAddTrigger("FrameCollisionEnterListComponentOnAdd", "FrameCollisionEnterListComponent", onAddEntitiesList);
-      GameECS->setOnAddTrigger("FrameCollisionLeaveListComponentOnAdd", "FrameCollisionLeaveListComponent", onAddEntitiesList);
-
-      GameECS->setOnRemoveTrigger("FrameCollisionEnterListComponentOnRemove", "FrameCollisionEnterListComponent", onRemoveEntitiesList);
-      GameECS->setOnRemoveTrigger("FrameCollisionLeaveListComponentOnRemove", "FrameCollisionLeaveListComponent", onRemoveEntitiesList);
-
 #define SCRIPT_OP(x) Data.scriptTagIDs[SCRIPT_TAG(x)] = GameECS->registerTag(TAG_NAME(x));
       SCRIPT_CALLBACK_FUNCTIONS()
 #undef SCRIPT_OP
@@ -446,19 +258,18 @@ EV_CONSTRUCTOR
       GameECS->registerSystem("ScriptComponent,"TAG_NAME(on_update), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnUpdateSystem, "ScriptCallbackOnUpdateSystem");
       GameSystemID fixedUpdateSystem = GameECS->registerSystem("ScriptComponent,"TAG_NAME(on_fixedupdate), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnFixedUpdateSystem, "ScriptCallbackOnFixedUpdateSystem");
       GameECS->setSystemRate(fixedUpdateSystem, 60.0);
-
-      GameECS->registerSystem("ScriptComponent,FrameCollisionEnterListComponent,"TAG_NAME(on_collisionenter), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnCollisionEnterSystem, "ScriptCallbackOnCollisionEnterSystem");
-      GameECS->registerSystem("ScriptComponent,FrameCollisionLeaveListComponent,"TAG_NAME(on_collisionleave), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnCollisionLeaveSystem, "ScriptCallbackOnCollisionLeaveSystem");
     }
   }
 
-
+  init_collision_callbacks();
 
   return 0;
 }
 
 EV_DESTRUCTOR 
 {
+  deinit_collision_callbacks();
+
   ev_lua_destroyState(&Data.L);
   if(Data.ecs_mod != NULL) {
     evol_unloadmodule(Data.ecs_mod);
@@ -554,14 +365,14 @@ _ev_scriptinterface_addfunction(
     auto_func = luaA_wrap_functions[arg_count];
   }
 
-  luaA_function_register_type(ctx.L, func, auto_func, func_name, rettype, arg_count, args);
+  luaA_function_register_type(ctx.L, (PTR)func, auto_func, func_name, rettype, arg_count, (luaA_Type*)args);
 }
 
 void
 ev_scriptinterface_registerapiloadfn(
     ScriptAPILoaderFN func)
 {
-  vec_push(&Data.api_loaders, &func);
+  vec_push((vec_t*)&Data.api_loaders, &func);
   for(size_t ctx_h = 0; ctx_h < vec_len(Data.contexts); ctx_h++) {
     func(&SELF(ScriptInterface), ctx_h);
   }

@@ -1,3 +1,5 @@
+#define SCRIPT_MOD_TYPES_DEFINED
+
 TYPE(ScriptHandle, PTR)
 
 TYPE(ScriptType, U64)
@@ -8,7 +10,7 @@ TYPE(ScriptStructMember, struct{
   U32 offset;
 })
 
-TYPE(ScriptContextHandle, GenericHandle);
+TYPE(ScriptContextHandle, GenericHandle)
 
 typedef void (*ScriptAPILoaderFN)(PTR, ScriptContextHandle);
 
