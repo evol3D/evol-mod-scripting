@@ -14,6 +14,13 @@
 #define IMPORT_MODULE evmod_game
 #include <evol/meta/module_import.h>
 
+// TODO This is currently being used by both the physics module and the 
+// scripting module. One solution would be to use the Event System for 
+// dispatching collision events. However, that would mean that collision
+// callbacks will be delayed by one frame.
+// Another solution is to expose the ability for modules to create their own
+// scripting callback functions. This seems a bit more plausible but it's not
+// obvious whether it's worth it.
 struct EntitiesList {
   vec(GameEntityID) entities;
 };
