@@ -6,6 +6,8 @@ EV_NS_DEF_FN(void, addToEntity, (GenericHandle, game_scene), (GenericHandle, ent
 EV_NS_DEF_FN(vec(U64) *, getCollisionEnterList, (GenericHandle, game_scene), (GenericHandle, entt))
 EV_NS_DEF_FN(vec(U64) *, getCollisionLeaveList, (GenericHandle, game_scene), (GenericHandle, entt))
 
+EV_NS_DEF_FN(I32, progress, (F32, delta_time))
+
 EV_NS_DEF_END(Script)
 
 /* =========================================================================================================================================== */

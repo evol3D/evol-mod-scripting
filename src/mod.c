@@ -255,7 +255,7 @@ EV_CONSTRUCTOR
       SCRIPT_CALLBACK_FUNCTIONS()
 #undef SCRIPT_OP
 
-      GameECS->registerSystem("ScriptComponent,"TAG_NAME(on_update), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnUpdateSystem, "ScriptCallbackOnUpdateSystem");
+      Data.onUpdateQuery = GameECS->registerQuery("ScriptComponent,"TAG_NAME(on_update));
       GameSystemID fixedUpdateSystem = GameECS->registerSystem("ScriptComponent,"TAG_NAME(on_fixedupdate), EV_ECS_PIPELINE_STAGE_UPDATE, ScriptCallbackOnFixedUpdateSystem, "ScriptCallbackOnFixedUpdateSystem");
       GameECS->setSystemRate(fixedUpdateSystem, 60.0);
     }
@@ -278,6 +278,17 @@ EV_DESTRUCTOR
 
   vec_fini(Data.api_loaders);
   vec_fini(Data.contexts);
+  return 0;
+}
+
+I32
+ev_script_progress(
+    F32 delta_time)
+{
+  EV_UNUSED_PARAMS(delta_time);
+  ECSGameWorldHandle world_handle = Scene->getECSWorld(0);
+  GameECS->runSystem(world_handle, Data.onUpdateQuery, ScriptCallbackOnUpdateSystem);
+
   return 0;
 }
 
@@ -426,6 +437,7 @@ ev_scriptcontext_destroycontext(
 EV_BINDINGS
 {
   EV_NS_BIND_FN(Script, new, _ev_script_new);
+  EV_NS_BIND_FN(Script, progress, ev_script_progress);
   EV_NS_BIND_FN(Script, addToEntity, _ev_script_addtoentity);
   EV_NS_BIND_FN(Script, getCollisionEnterList, _ev_script_getcollisionenterlist);
   EV_NS_BIND_FN(Script, getCollisionLeaveList, _ev_script_getcollisionleavelist);

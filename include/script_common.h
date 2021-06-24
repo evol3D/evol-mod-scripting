@@ -61,6 +61,8 @@ struct ScriptModuleData {
   GameComponentID frameCollisionEnterListComponentID;
   GameComponentID frameCollisionLeaveListComponentID;
 
+  GameQueryID onUpdateQuery;
+
   Map(evstring, ScriptHandle) scripts;
 
   vec(ScriptAPILoaderFN) api_loaders;
