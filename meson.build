@@ -28,9 +28,11 @@ mod_deps = [
 ]
 
 module = shared_module(
-  'evmodscript', mod_src,
+  'luascript', mod_src,
   include_directories: mod_incdir,
   dependencies: mod_deps,
+  name_prefix: evmod_name_prefix,
+  name_suffix: evmod_name_suffix,
 )
 
 mod_dep = declare_dependency(
